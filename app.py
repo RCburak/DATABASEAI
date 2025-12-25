@@ -6,6 +6,7 @@ import re
 import mysql.connector
 import time
 from dotenv import load_dotenv
+from streamlit_mermaid import st_mermaid
 
 # --- 1. KONFİGÜRASYON ---
 load_dotenv()
@@ -155,12 +156,37 @@ elif st.session_state.active_stage == 4:
         st.markdown("**3NF:** Transitive dependencies removed. [cite: 65]")
         st.success("Tablolar 3. Normal Form seviyesine getirildi.")
 
-# STAGE 5: ER DIAGRAM [cite: 67-68]
+# STAGE 5: ER DIAGRAM (Crow’s Foot Notation)
 elif st.session_state.active_stage == 5:
     st.subheader("🖼️ Stage 6: ER Diagram (Crow’s Foot Notation)")
-    st.write("Varlıklar arası kardinaliteler (1:1, 1:N, M:N) ")
-    
-    st.image("https://mermaid.ink/img/pako:eNpdkU1Lw0AQhv_KMMeeFPyA9SBaL9KDFK8S0mS3STfN7mS2pS39704S09ZDe3mY933emS0H66yBAfE-9UAsWOsMB-p65y2SUnp8uIuF-D5iX3iY8r5W67U4m-vI-605UclYv0M_L_fC2y_37_0X-MCHL3S1YV-XoYclpIn2pE7T_F-O4YyVst9_f7Gf-G7-rS3U9kYv8D05QJp9mHNoY80fR9p-rN932C-0LpDq8T0k-636Ysc-2pT_36N8AEP5Z10")
+    st.markdown("Varlıklar arası kardinaliteler (1:1, 1:N, M:N)")
+
+    if st.button("✨ ER Diyagramını Oluştur"):
+        with st.spinner("Şema analiz ediliyor..."):
+            # ChatGPT'den dökümana uygun Crow's Foot kodu istiyoruz
+            prompt = f"""
+            Generate a Mermaid.js ER diagram using Crow's Foot notation for:
+            Domain: {domain}
+            Entities: {entities}
+            Format: erDiagram syntax only.
+            Example: STUDENT ||--o{{ LOAN : places
+            Return ONLY the mermaid code block.
+            """
+            response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
+            mermaid_code = response.choices[0].message.content.replace("```mermaid", "").replace("```", "").strip()
+            
+            # Kırık resim hatasını (base64 ile) kesin çözen bölüm:
+            import base64
+            # Kodu base64 formatına çevirerek URL limitlerini ve karakter hatalarını aşıyoruz
+            encoded_string = base64.b64encode(mermaid_code.encode('utf-8')).decode('utf-8')
+            mermaid_url = f"https://mermaid.ink/img/{encoded_string}"
+            
+            # Resmi ekrana basıyoruz
+            st.image(mermaid_url, caption=f"{domain} - ER Diagram", use_container_width=True)
+            
+            st.success("ER Diyagramı başarıyla oluşturuldu!")
+            with st.expander("Diyagram Kodunu Gör (Rapor İçin)"):
+                st.code(mermaid_code)
 
 # STAGE 6: SQL SCRIPT [cite: 69-74]
 elif st.session_state.active_stage == 6:
