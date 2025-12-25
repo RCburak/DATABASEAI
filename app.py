@@ -265,66 +265,22 @@ elif st.session_state.active_stage == 6:
     else:
         st.warning("SQL kodunu üretmek için yukarıdaki butona tıklayın.")
 
-# STAGE 7: FINAL DEPLOYMENT (XAMPP / MySQL)
+# STAGE 7: DEPLOY
 elif st.session_state.active_stage == 7:
     st.subheader("🚀 Final Step: Deployment to PHPMyAdmin")
-    
-    # Veritabanı ismini standartlaştır (Küçük harf ve alt tire)
-    db_name = domain.lower().replace(" ", "_").replace("-", "_") + "_db"
-    st.info(f"Bağlantı: **localhost** | Hedef Veritabanı: `{db_name}`")
-    
-    # Önce SQL üretildi mi kontrol et
-    if 'full_sql' not in st.session_state or not st.session_state.full_sql:
-        st.warning("⚠️ Lütfen önce 'SQL Script' aşamasında kodları üretin.")
-    else:
-        if st.button("🚀 TÜM ŞEMAYI PHPMYADMIN'E AKTAR"):
-            try:
-                # 1. XAMPP MySQL Bağlantısı
-                conn = mysql.connector.connect(
-                    host="localhost",
-                    user="root",
-                    password=""
-                )
-                cursor = conn.cursor()
-                
-                # 2. Veritabanı Oluştur ve Seç
-                cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-                cursor.execute(f"USE `{db_name}`")
-                
-                # 3. SQL Betiğini Parçalara Ayır (Tabloları sırayla oluşturmak için)
-                # Not: PHPMyAdmin çoklu komutları (multitask) destekler ancak 
-                # connector-python için parçalamak daha güvenlidir.
-                sql_commands = st.session_state.full_sql.split(';')
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                success_count = 0
-                for i, command in enumerate(sql_commands):
-                    clean_command = command.strip()
-                    if clean_command:
-                        try:
-                            cursor.execute(clean_command)
-                            success_count += 1
-                        except Exception as e:
-                            st.error(f"Komut Hatası: {e}\nKod: `{clean_command[:50]}...`")
-                    
-                    # İlerleme çubuğu güncelle
-                    progress = (i + 1) / len(sql_commands)
-                    progress_bar.progress(progress)
-                
-                conn.commit()
-                st.success(f"✅ İşlem Tamamlandı! {success_count} SQL komutu başarıyla çalıştırıldı.")
-                st.balloons()
-                
-                # PHPMyAdmin linkini göster
-                st.markdown(f"👉 [PHPMyAdmin'e Git](http://localhost/phpmyadmin/index.php?route=/database/structure&db={db_name})")
-                
-                cursor.close()
-                conn.close()
-                
-            except Exception as e:
-                st.error(f"❌ XAMPP Hatası: {e}")
+    db_name = domain.lower().replace(" ", "_") + "_db"
+    if st.button("🚀 EXECUTE ON MySQL"):
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="")
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+            cursor.execute(f"USE `{db_name}`")
+            table_name = entities.split(',')[0].strip().replace(' ', '_')
+            cursor.execute(f"CREATE TABLE IF NOT EXISTS `{table_name}` (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255))")
+            st.success(f"✅ '{db_name}' veritabanı PHPMyAdmin'e başarıyla eklendi!")
+            st.balloons()
+            cursor.close(); conn.close()
+        except Exception as e: st.error(f"XAMPP Hatası: {e}")
 
 if st.session_state.active_stage == 0:
     st.info("Süreci başlatmak için lütfen sol menüdeki tanımları yapın ve Stage 1'e tıklayın.")
