@@ -144,17 +144,58 @@ elif st.session_state.active_stage == 3:
             st.session_state.missing_data = call_ai(prompt)
     if st.session_state.missing_data: st.table(st.session_state.missing_data)
 
-# STAGE 4: NORMALIZATION [cite: 61-66]
+# STAGE 4: NORMALIZATION
 elif st.session_state.active_stage == 4:
     st.subheader("⚡ Stage 5: Normalization (0NF → 3NF)")
-    n_tabs = st.tabs(["1NF", "2NF", "3NF"])
+    st.info("Veritabanı tasarımı, veri tekrarını önlemek için 3. Normal Form seviyesine getiriliyor.")
+    
+    n_tabs = st.tabs(["1NF (Atomic)", "2NF (Partial Dep)", "3NF (Transitive Dep)"])
+    
     with n_tabs[0]:
-        st.markdown("**1NF:** Atomic values enforced. No repeating groups. [cite: 63]")
-        st.code(f"{entities.split(',')[0].upper()} (ID, MultiValueAttr) --> SPLIT TO NEW ROWS")
-    with n_tabs[1]: st.markdown("**2NF:** Partial dependencies removed. [cite: 64]")
+        st.markdown("#### 1NF: First Normal Form")
+        st.write("**Kural:** Çoklu değer içeren sütunlar ve tekrarlayan gruplar kaldırılır. Tüm değerler atomik olmalıdır.")
+        
+        # Dinamik örnekleme
+        main_entity = entities.split(',')[0].strip().upper()
+        st.code(f"""
+-- 0NF (Hatalı Yapı):
+{main_entity} (ID, Name, PhoneNumbers) -- 'PhoneNumbers' birden fazla numara içeriyor.
+
+-- 1NF (Düzeltilmiş Yapı):
+{main_entity} (ID, Name)
+{main_entity}_PHONES (ID, PhoneNumber) -- Her satırda tek bir telefon numarası.
+        """, language="sql")
+        st.success("✅ Veriler atomik hale getirildi, tekrarlayan gruplar temizlendi.")
+
+    with n_tabs[1]:
+        st.markdown("#### 2NF: Second Normal Form")
+        st.write("**Kural:** Tablo 1NF'de olmalı ve birincil anahtarın (PK) bir parçasına bağımlı olan (kısmi bağımlılık) sütunlar kaldırılmalıdır.")
+        
+        st.code(f"""
+-- 1NF (Kısmi Bağımlılık):
+ORDER_ITEMS (OrderID, ProductID, OrderDate, Price)
+-- 'OrderDate' sadece 'OrderID'ye bağlıdır, PK'nın tamamına değil.
+
+-- 2NF (Düzeltilmiş):
+ORDERS (OrderID, OrderDate)
+ORDER_ITEMS (OrderID, ProductID, Price)
+        """, language="sql")
+        st.success("✅ Kısmi fonksiyonel bağımlılıklar giderildi.")
+
     with n_tabs[2]:
-        st.markdown("**3NF:** Transitive dependencies removed. [cite: 65]")
-        st.success("Tablolar 3. Normal Form seviyesine getirildi.")
+        st.markdown("#### 3NF: Third Normal Form")
+        st.write("**Kural:** Tablo 2NF'de olmalı ve anahtar olmayan sütunlar arasındaki geçişli bağımlılıklar (transitive dependencies) kaldırılmalıdır.")
+        
+        st.code(f"""
+-- 2NF (Geçişli Bağımlılık):
+STUDENTS (StudentID, Name, DeptID, DeptName)
+-- 'DeptName', PK olmayan 'DeptID'ye bağlıdır.
+
+-- 3NF (Düzeltilmiş):
+STUDENTS (StudentID, Name, DeptID)
+DEPARTMENTS (DeptID, DeptName)
+        """, language="sql")
+        st.success("✅ Geçişli bağımlılıklar kaldırılarak 3NF seviyesine ulaşıldı.")
 
 # STAGE 5: ER DIAGRAM (Crow’s Foot Notation)
 elif st.session_state.active_stage == 5:
@@ -188,34 +229,102 @@ elif st.session_state.active_stage == 5:
             with st.expander("Diyagram Kodunu Gör (Rapor İçin)"):
                 st.code(mermaid_code)
 
-# STAGE 6: SQL SCRIPT [cite: 69-74]
+# STAGE 6: SQL SCRIPT GENERATION
 elif st.session_state.active_stage == 6:
     st.subheader("⌨️ Stage 7: SQL Code Generation")
-    main_t = entities.split(',')[0].strip().replace(' ', '_')
-    sql_text = f"""-- 1. Table Creation 
-CREATE TABLE `{main_t}` (ID INT PRIMARY KEY AUTO_INCREMENT, Name VARCHAR(100));
--- 2. Advanced Feature: {adv_feat} [cite: 73]
-CREATE TRIGGER TRG_After_Action BEFORE INSERT ON `{main_t}` ...
--- 3. Reporting Queries [cite: 74]
-SELECT * FROM `{main_t}` ORDER BY ID DESC LIMIT 3;"""
-    st.code(sql_text, language="sql")
+    st.info("PHPMyAdmin için tam uyumlu SQL betiği hazırlanıyor...")
+    
+    if st.button("✨ ChatGPT ile Tam SQL Betiği Üret"):
+        with st.spinner("Veritabanı mimarisi SQL'e dönüştürülüyor..."):
+            prompt = f"""
+            As a Senior DBA, generate a full MySQL script for PHPMyAdmin based on:
+            Domain: {domain}, Entities: {entities}, Advanced Feature: {adv_feat}.
+            
+            The script must include:
+            1. CREATE TABLE statements with appropriate PK, FK and Data Types.
+            2. At least one complex TRIGGER for the advanced feature: {adv_feat}.
+            3. INSERT statements with sample data for each table.
+            4. Three specific SELECT queries for the requirement: {reporting}.
+            
+            Use backticks for table names. Ensure Foreign Key constraints are correctly mapped.
+            Return ONLY the SQL code.
+            """
+            response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
+            st.session_state.full_sql = response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
 
-# STAGE 7: DEPLOY
+    if 'full_sql' in st.session_state:
+        st.code(st.session_state.full_sql, language="sql")
+        
+        st.download_button(
+            label="📄 SQL Dosyasını İndir",
+            data=st.session_state.full_sql,
+            file_name=f"{domain.lower().replace(' ', '_')}_schema.sql",
+            mime="text/sql"
+        )
+        st.success("✅ Kod hazır! Bu kodu PHPMyAdmin > SQL sekmesine yapıştırabilirsiniz.")
+    else:
+        st.warning("SQL kodunu üretmek için yukarıdaki butona tıklayın.")
+
+# STAGE 7: FINAL DEPLOYMENT (XAMPP / MySQL)
 elif st.session_state.active_stage == 7:
     st.subheader("🚀 Final Step: Deployment to PHPMyAdmin")
-    db_name = domain.lower().replace(" ", "_") + "_db"
-    if st.button("🚀 EXECUTE ON MySQL"):
-        try:
-            conn = mysql.connector.connect(host="localhost", user="root", password="")
-            cursor = conn.cursor()
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-            cursor.execute(f"USE `{db_name}`")
-            table_name = entities.split(',')[0].strip().replace(' ', '_')
-            cursor.execute(f"CREATE TABLE IF NOT EXISTS `{table_name}` (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255))")
-            st.success(f"✅ '{db_name}' veritabanı PHPMyAdmin'e başarıyla eklendi!")
-            st.balloons()
-            cursor.close(); conn.close()
-        except Exception as e: st.error(f"XAMPP Hatası: {e}")
+    
+    # Veritabanı ismini standartlaştır (Küçük harf ve alt tire)
+    db_name = domain.lower().replace(" ", "_").replace("-", "_") + "_db"
+    st.info(f"Bağlantı: **localhost** | Hedef Veritabanı: `{db_name}`")
+    
+    # Önce SQL üretildi mi kontrol et
+    if 'full_sql' not in st.session_state or not st.session_state.full_sql:
+        st.warning("⚠️ Lütfen önce 'SQL Script' aşamasında kodları üretin.")
+    else:
+        if st.button("🚀 TÜM ŞEMAYI PHPMYADMIN'E AKTAR"):
+            try:
+                # 1. XAMPP MySQL Bağlantısı
+                conn = mysql.connector.connect(
+                    host="localhost",
+                    user="root",
+                    password=""
+                )
+                cursor = conn.cursor()
+                
+                # 2. Veritabanı Oluştur ve Seç
+                cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+                cursor.execute(f"USE `{db_name}`")
+                
+                # 3. SQL Betiğini Parçalara Ayır (Tabloları sırayla oluşturmak için)
+                # Not: PHPMyAdmin çoklu komutları (multitask) destekler ancak 
+                # connector-python için parçalamak daha güvenlidir.
+                sql_commands = st.session_state.full_sql.split(';')
+                
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                success_count = 0
+                for i, command in enumerate(sql_commands):
+                    clean_command = command.strip()
+                    if clean_command:
+                        try:
+                            cursor.execute(clean_command)
+                            success_count += 1
+                        except Exception as e:
+                            st.error(f"Komut Hatası: {e}\nKod: `{clean_command[:50]}...`")
+                    
+                    # İlerleme çubuğu güncelle
+                    progress = (i + 1) / len(sql_commands)
+                    progress_bar.progress(progress)
+                
+                conn.commit()
+                st.success(f"✅ İşlem Tamamlandı! {success_count} SQL komutu başarıyla çalıştırıldı.")
+                st.balloons()
+                
+                # PHPMyAdmin linkini göster
+                st.markdown(f"👉 [PHPMyAdmin'e Git](http://localhost/phpmyadmin/index.php?route=/database/structure&db={db_name})")
+                
+                cursor.close()
+                conn.close()
+                
+            except Exception as e:
+                st.error(f"❌ XAMPP Hatası: {e}")
 
 if st.session_state.active_stage == 0:
     st.info("Süreci başlatmak için lütfen sol menüdeki tanımları yapın ve Stage 1'e tıklayın.")
