@@ -307,7 +307,9 @@ elif st.session_state.active_stage == 6:
 
             STRICT ACADEMIC REQUIREMENTS:
             1. DOCUMENTATION TABLE: Create a table named `_business_rules` (id INT PRIMARY KEY AUTO_INCREMENT, rule_id VARCHAR(10), rule_description TEXT, logic_type VARCHAR(50)).
-               Insert all original rules ({main_rules}) and fixed rules ({fixed_rules}) into this table so they are visible in PHPMyAdmin.
+               - IMPORTANT: Use 'CREATE TABLE IF NOT EXISTS'. 
+               - DO NOT include 'DROP TABLE' or 'TRUNCATE'. Existing data in PHPMyAdmin must be preserved and new rules must be APPENDED.
+               - Insert all original rules ({main_rules}) and fixed rules ({fixed_rules}) into this table so they are added to existing ones.
             2. CREATE TABLES: Use backticks, proper PK/FK relations, and NOT NULL constraints.
             3. TRIGGERS: Write 'BEFORE INSERT' triggers for the rules: {constraints} AND the fixed rules in {fixed_rules}.
             4. ERROR HANDLING: Inside triggers, use 'SIGNAL SQLSTATE '45000'' with a custom MESSAGE_TEXT (e.g., 'BR001 Violation: Max 3 books!').
@@ -339,8 +341,9 @@ elif st.session_state.active_stage == 6:
         st.warning("""
         🚀 **PHPMyAdmin Kurulum Rehberi:**
         1. SQL sekmesinin en altındaki **'Sınırlayıcı' (Delimiter)** kutusuna `//` yazın.
-        2. Kodu yapıştırırken en üstteki `DELIMITER //` satırını silin (PHPMyAdmin kutudan okur).
-        3. Önceki verilerden dolayı 'Duplicate Entry' hatası alırsanız, ilgili tabloyu boşaltın.
+        2. Bu SQL kodunu her çalıştırdığınızda `_business_rules` tablosundaki veriler silinmez, üzerine eklenir.
+        3. Kodu yapıştırırken en üstteki `DELIMITER //` satırını silin (PHPMyAdmin kutudan okur).
+        4. Önceki verilerden dolayı 'Duplicate Entry' hatası alırsanız, ilgili tabloyu boşaltın.
         """)
         
         st.info("💡 **Ders Notu:** `_business_rules` tablosu kurallarınızı liste olarak gösterir, Triggerlar ise bu kuralları korur.")
