@@ -241,9 +241,33 @@ elif st.session_state.active_stage == 6:
     st.subheader("⌨️ Stage 7: SQL Code Generation")
     if st.button("✨ ChatGPT ile Tam SQL Betiği Üret"):
         with st.spinner("Veritabanı mimarisi SQL'e dönüştürülüyor..."):
-            prompt = f"As a Senior DBA, generate a full MySQL script for {domain}. Entities: {entities}. Requirement: {reporting}."
+            # Prompt güncellendi: AI'nın veritabanı ismi uydurmasını kesin olarak engelliyoruz
+            prompt = f"""
+            As a Senior DBA, generate a full MySQL script for {domain}. 
+            Entities: {entities}. 
+            Requirement: {reporting}. 
+            
+            STRICT RULES:
+            1. DO NOT include 'CREATE DATABASE' or 'USE' statements.
+            2. Use backticks for all table and column names.
+            3. Return ONLY the SQL code (CREATE TABLE, INSERT, etc.). 
+            4. DO NOT include any explanations or conversational text.
+            """
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
-            st.session_state.full_sql = response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
+            raw_content = response.choices[0].message.content
+            
+            # Markdown içindeki SQL bloğunu ayıkla
+            sql_match = re.search(r"```sql\n(.*?)\n```", raw_content, re.DOTALL)
+            clean_sql = sql_match.group(1) if sql_match else raw_content.replace("```sql", "").replace("```", "")
+            
+            # Satır bazlı temizlik: "CREATE DATABASE" veya "USE" içeren satırları filtrele
+            lines = clean_sql.strip().split('\n')
+            sql_only_lines = [
+                line for line in lines 
+                if not any(line.strip().upper().startswith(x) for x in ["CREATE DATABASE", "USE", "CERTAINLY", "HERE IS"])
+            ]
+            
+            st.session_state.full_sql = "\n".join(sql_only_lines).strip()
 
     if 'full_sql' in st.session_state:
         st.code(st.session_state.full_sql, language="sql")
@@ -252,16 +276,65 @@ elif st.session_state.active_stage == 6:
 # STAGE 7: DEPLOY
 elif st.session_state.active_stage == 7:
     st.subheader("🚀 Final Step: Deployment to PHPMyAdmin")
-    db_name = domain.lower().replace(" ", "_") + "_db"
+    
+    # Veritabanı ismini tek bir yerden yönetiyoruz
+    safe_db_name = domain.lower().replace(" ", "_") + "_db"
+    
     if st.button("🚀 EXECUTE ON MySQL"):
-        try:
-            conn = mysql.connector.connect(host="localhost", user="root", password="")
-            cursor = conn.cursor()
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-            st.success(f"✅ '{db_name}' veritabanı PHPMyAdmin'e başarıyla eklendi!")
-            st.balloons()
-            cursor.close(); conn.close()
-        except Exception as e: st.error(f"Bağlantı Hatası: {e}")
+        if 'full_sql' not in st.session_state or not st.session_state.full_sql:
+            st.error("Önce 'SQL Script' aşamasında kod üretmelisiniz!")
+        else:
+            try:
+                # 1. Bağlantı ve Tek Bir DB Oluşturma/Seçme
+                conn = mysql.connector.connect(host="localhost", user="root", password="")
+                cursor = conn.cursor()
+                cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{safe_db_name}`")
+                cursor.execute(f"USE `{safe_db_name}`")
+                
+                # 2. Foreign Key hatalarını (errno 150) engellemek için kontrolleri kapat
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+                
+                # 3. SQL komutlarını yürüt
+                sql_commands = st.session_state.full_sql.split(';')
+                
+                success_count = 0
+                error_logs = []
+
+                for command in sql_commands:
+                    clean_command = command.strip()
+                    
+                    # KRİTİK FİLTRE: Eğer komut CREATE DATABASE veya USE ise ATLA
+                    # Bu sayede AI'nın 'kanit57' gibi komutları sizin DB'nizi bozamaz
+                    if clean_command:
+                        upper_cmd = clean_command.upper()
+                        if any(upper_cmd.startswith(x) for x in ["CREATE DATABASE", "USE"]):
+                            continue 
+                        
+                        # Sadece geçerli SQL başlangıçlarını çalıştır
+                        if any(upper_cmd.startswith(x) for x in ["CREATE", "INSERT", "ALTER", "DROP", "SET"]):
+                            try:
+                                cursor.execute(clean_command)
+                                success_count += 1
+                            except Exception as e:
+                                error_logs.append(f"Hata: {str(e)}")
+                
+                # 4. Kontrolleri geri aç ve işlemi onayla
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+                conn.commit()
+                
+                if success_count > 0:
+                    st.success(f"✅ Tablolar başarıyla `{safe_db_name}` veritabanına aktarıldı!")
+                    st.balloons()
+                
+                if error_logs:
+                    with st.expander("Bazı komutlar işlenemedi (Sözdizimi hataları olabilir)"):
+                        for log in error_logs:
+                            st.warning(log)
+                
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                st.error(f"MySQL Bağlantı Hatası: {e}")
 
 if st.session_state.active_stage == 0:
     st.info("Süreci başlatmak için lütfen sol menüdeki tanımları yapın ve Stage 1'e tıklayın.")
