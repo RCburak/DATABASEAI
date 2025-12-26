@@ -201,27 +201,35 @@ elif st.session_state.active_stage == 3:
         with st.expander("Güncel Business Rules Listesini Gör"):
             st.table(st.session_state.rules_data)
 
-# STAGE 4: NORMALIZATION
+# STAGE 4: NORMALIZATION (Statik kod yerine Dinamik AI Tablosu)
 elif st.session_state.active_stage == 4:
     st.subheader("⚡ Stage 5: Normalization (0NF → 3NF)")
-    st.info("Veritabanı tasarımı, veri tekrarını önlemek için 3. Normal Form seviyesine getiriliyor.")
-    n_tabs = st.tabs(["1NF (Atomic)", "2NF (Partial Dep)", "3NF (Transitive Dep)"])
+    st.info("Veritabanı tasarımı 3. Normal Form seviyesine getiriliyor.")
     
-    with n_tabs[0]:
-        st.markdown("#### 1NF: First Normal Form")
-        main_entity = entities.split(',')[0].strip().upper()
-        st.code(f"-- 1NF Örneği:\n{main_entity} (ID, Name)\n{main_entity}_PHONES (ID, PhoneNumber)", language="sql")
-        st.success("✅ Veriler atomik hale getirildi.")
+    if st.button("✨ ChatGPT ile Normalizasyon Şemasını Oluştur"):
+        with st.spinner("Normalizasyon analizi yapılıyor..."):
+            prompt = f"""
+            Perform database normalization (1NF, 2NF, 3NF) for: {entities}. 
+            Return a JSON list of objects. Each object MUST have:
+            'Normal_Form' (e.g. 1NF, 2NF, 3NF), 
+            'Table_Name', 
+            'Columns', 
+            'Reason' (Why this table was created).
+            """
+            st.session_state.norm_data = call_ai(prompt)
 
-    with n_tabs[1]:
-        st.markdown("#### 2NF: Second Normal Form")
-        st.code("-- 2NF Örneği:\nORDERS (OrderID, OrderDate)\nORDER_ITEMS (OrderID, ProductID, Price)", language="sql")
-        st.success("✅ Kısmi fonksiyonel bağımlılıklar giderildi.")
-
-    with n_tabs[2]:
-        st.markdown("#### 3NF: Third Normal Form")
-        st.code("-- 3NF Örneği:\nSTUDENTS (StudentID, Name, DeptID)\nDEPARTMENTS (DeptID, DeptName)", language="sql")
-        st.success("✅ Geçişli bağımlılıklar kaldırıldı.")
+    if 'norm_data' in st.session_state and st.session_state.norm_data:
+        # 1NF, 2NF ve 3NF için ayrı sekmelerde tabloları göster
+        n_tabs = st.tabs(["1NF (Atomic)", "2NF (Partial Dep)", "3NF (Transitive Dep)"])
+        for tab_idx, nf_name in enumerate(["1NF", "2NF", "3NF"]):
+            with n_tabs[tab_idx]:
+                filtered_data = [d for d in st.session_state.norm_data if nf_name in d['Normal_Form']]
+                if filtered_data:
+                    st.table(filtered_data)
+                else:
+                    st.info(f"{nf_name} için veri bulunamadı veya üst formlara entegre edildi.")
+    else:
+        st.warning("Lütfen normalizasyon şemasını oluşturmak için butona basın.")
 
 # STAGE 5: ER DIAGRAM
 elif st.session_state.active_stage == 5:
