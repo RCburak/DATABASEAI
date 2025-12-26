@@ -290,36 +290,40 @@ elif st.session_state.active_stage == 5:
                 
             st.success("✅ Diyagram başarıyla optimize edildi.")
 
-# STAGE 6: SQL SCRIPT (Tables, Triggers & Sample Data)
+# STAGE 6: SQL SCRIPT (Academic Standard: Metadata, Triggers & Logic)
 elif st.session_state.active_stage == 6:
-    st.subheader("⌨️ Stage 6: SQL Code Generation (Advanced Academic Version)")
+    st.subheader("⌨️ Stage 6: SQL Code Generation (Full Academic Version)")
     
     if st.button("✨ ChatGPT ile Tam SQL ve Trigger Betiği Üret"):
-        with st.spinner("Ders projesi standartlarında SQL mimarisi hazırlanıyor..."):
-            # Prompt: Trigger, Error Handling ve Delimiter yapılarını zorunlu kılıyoruz
+        with st.spinner("Ders projesi standartlarında SQL mimarisi ve tetikleyiciler hazırlanıyor..."):
+            # Hem ana kuralları hem de fixlenen eksiklikleri AI'ya gönderiyoruz
+            main_rules = str(st.session_state.rules_data)
+            fixed_rules = str(st.session_state.missing_data)
+            
             prompt = f"""
             As a Senior Database Architect, generate a full MySQL script for the '{domain}' system.
             Entities: {entities}.
-            Business Logic/Constraints to enforce: {constraints}.
+            Business Logic: {constraints}.
 
-            STRICT ACADEMIC RULES:
-            1. CREATE TABLES: Use backticks, proper PK/FK relations, and NOT NULL constraints.
-            2. TRIGGERS: For the rule "{constraints}", write a 'BEFORE INSERT' trigger on the relevant table.
-            3. ERROR HANDLING: Inside triggers, use 'SIGNAL SQLSTATE '45000'' with a descriptive MESSAGE_TEXT to block invalid inserts.
-            4. COMPATIBILITY: Wrap triggers with 'DELIMITER //' and 'DELIMITER ;' for PHPMyAdmin compatibility.
-            5. SAMPLE DATA: Include realistic 'INSERT INTO' statements for all tables.
-            6. CLEANUP: DO NOT include 'CREATE DATABASE' or 'USE' statements.
-            7. FORMAT: Return ONLY the raw SQL code block.
+            STRICT ACADEMIC REQUIREMENTS:
+            1. DOCUMENTATION TABLE: Create a table named `_business_rules` (id INT PRIMARY KEY AUTO_INCREMENT, rule_id VARCHAR(10), rule_description TEXT, logic_type VARCHAR(50)).
+               Insert all original rules ({main_rules}) and fixed rules ({fixed_rules}) into this table so they are visible in PHPMyAdmin.
+            2. CREATE TABLES: Use backticks, proper PK/FK relations, and NOT NULL constraints.
+            3. TRIGGERS: Write 'BEFORE INSERT' triggers for the rules: {constraints} AND the fixed rules in {fixed_rules}.
+            4. ERROR HANDLING: Inside triggers, use 'SIGNAL SQLSTATE '45000'' with a custom MESSAGE_TEXT (e.g., 'BR001 Violation: Max 3 books!').
+            5. COMPATIBILITY: Wrap all triggers with 'DELIMITER //' and 'DELIMITER ;'.
+            6. SAMPLE DATA: Include realistic 'INSERT INTO' statements for all tables.
+            7. FORMAT: Return ONLY the raw SQL code block. No explanations.
             """
             
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             raw_content = response.choices[0].message.content
             
-            # SQL bloğunu ayıkla (Markdown temizliği)
+            # Markdown temizliği (SQL bloğunu ayıkla)
             sql_match = re.search(r"```sql\n(.*?)\n```", raw_content, re.DOTALL)
             clean_sql = sql_match.group(1) if sql_match else raw_content.replace("```sql", "").replace("```", "")
             
-            # AI'nın bazen eklediği gereksiz metinleri temizle
+            # Gereksiz AI metinlerini temizle
             lines = clean_sql.strip().split('\n')
             sql_only_lines = [
                 line for line in lines 
@@ -329,23 +333,25 @@ elif st.session_state.active_stage == 6:
             st.session_state.full_sql = "\n".join(sql_only_lines).strip()
 
     if 'full_sql' in st.session_state:
-        st.success("✅ SQL ve Tetikleyiciler Başarıyla Üretildi!")
+        st.success("✅ SQL, Triggerlar ve Business Rules Tablosu Başarıyla Üretildi!")
         
-        # PHPMyAdmin Kullanıcıları İçin Kritik Uyarı
+        # PHPMyAdmin Kullanıcı Rehberi
         st.warning("""
-        ⚠️ **PHPMyAdmin İçin Önemli:** Kod içindeki Trigger'ları (Tetikleyicileri) PHPMyAdmin'de çalıştırırken, 
-        SQL sayfasının en altındaki **'Sınırlayıcı' (Delimiter)** kutusuna `//` yazmayı unutmayın!
+        🚀 **PHPMyAdmin Kurulum Rehberi:**
+        1. SQL sekmesinin en altındaki **'Sınırlayıcı' (Delimiter)** kutusuna `//` yazın.
+        2. Kodu yapıştırırken en üstteki `DELIMITER //` satırını silin (PHPMyAdmin kutudan okur).
+        3. Önceki verilerden dolayı 'Duplicate Entry' hatası alırsanız, ilgili tabloyu boşaltın.
         """)
         
-        st.info(f"💡 **Ders Notu:** Bu script 3NF yapısına uygundur ve '{constraints}' kuralını Trigger seviyesinde korur.")
+        st.info("💡 **Ders Notu:** `_business_rules` tablosu kurallarınızı liste olarak gösterir, Triggerlar ise bu kuralları korur.")
         
         st.code(st.session_state.full_sql, language="sql")
         
         # Dosya indirme butonu
         st.download_button(
-            label="📄 .SQL Dosyasını İndir",
+            label="📄 SQL Dosyasını İndir",
             data=st.session_state.full_sql,
-            file_name=f"{domain.lower().replace(' ', '_')}_schema.sql",
+            file_name=f"{domain.lower().replace(' ', '_')}_complete.sql",
             mime="text/sql"
         )
 
