@@ -266,16 +266,29 @@ elif st.session_state.active_stage == 4:
 
 # STAGE 5: ER DIAGRAM
 elif st.session_state.active_stage == 5:
-    st.subheader("🖼️ Stage 6: ER Diagram (Crow’s Foot Notation)")
-    if st.button("✨ ER Diyagramını Oluştur"):
-        with st.spinner("Şema analiz ediliyor..."):
-            prompt = f"Generate a Mermaid.js ER diagram using Crow's Foot notation for Domain: {domain}, Entities: {entities}. Return ONLY mermaid code."
+    st.subheader("🖼️ Stage 5: ER Diagram (Crow’s Foot Notation)")
+    
+    if st.button("✨ ER Diyagramını Oluştur", type="primary"):
+        with st.spinner("Şema görselleştiriliyor..."):
+            prompt = f"Generate a Mermaid.js ER diagram using Crow's Foot for: {domain}. Entities: {entities}. Return ONLY raw mermaid code."
+            
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             mermaid_code = response.choices[0].message.content.replace("```mermaid", "").replace("```", "").strip()
+            
             import base64
             encoded_string = base64.b64encode(mermaid_code.encode('utf-8')).decode('utf-8')
-            st.image(f"https://mermaid.ink/img/{encoded_string}", use_container_width=True)
-            st.success("ER Diyagramı başarıyla oluşturuldu!")
+            image_url = f"https://mermaid.ink/img/{encoded_string}"
+            
+            # --- KÜÇÜLTME MANTIĞI ---
+            # Sütun oranlarını [2, 1, 2] yaparak diyagramı merkeze hapsediyoruz ve küçültüyoruz
+            col_left, col_mid, col_right = st.columns([1, 1.5, 1])
+            
+            with col_mid:
+                st.markdown("🔍 **Önizleme (Küçültülmüş Görünüm)**")
+                # use_container_width=True kalsa bile col_mid dar olduğu için resim küçük görünecektir
+                st.image(image_url, use_container_width=True)
+                
+            st.success("✅ Diyagram başarıyla optimize edildi.")
 
 # STAGE 6: SQL SCRIPT
 elif st.session_state.active_stage == 6:
