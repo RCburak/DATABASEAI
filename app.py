@@ -201,103 +201,81 @@ elif st.session_state.active_stage == 3:
         with st.expander("Güncel Business Rules Listesini Gör"):
             st.table(st.session_state.rules_data)
 
-# STAGE 4: NORMALIZATION (Decomposition Focus)
+# STAGE 4: NORMALIZATION (0NF -> 1NF -> 2NF -> 3NF Decomposition)
 elif st.session_state.active_stage == 4:
-    st.subheader("⚡ Stage 4: Database Normalization (0NF → 3NF)")
+    st.subheader("⚡ Stage 4: Database Normalization Process")
     
-    col_info, col_img = st.columns([2, 1])
-    with col_info:
-        st.write("Bu aşama, verideki gereksiz tekrarları önlemek için tabloları mantıksal parçalara böler.")
-        st.info("💡 **3NF Hedefi:** Her tablo tek bir konuya odaklanmalı ve geçişli bağımlılıklar (transitive dependencies) kaldırılmalıdır.")
-    
-    with col_img:
-        st.markdown("🖼️ **Süreç:** 0NF → 1NF → 2NF → 3NF")
-        # 
-    if st.button("✨ Normalizasyon Analizini Başlat (AI)", type="primary"):
-        with st.spinner("Veri mimarisi analiz ediliyor..."):
-            # Prompt'u AI'nın sadece saf JSON döndürmesi için zorluyoruz
+    st.markdown("""
+    Ders projesi standartlarında normalizasyon, verideki fonksiyonel bağımlılıkları analiz ederek tabloları parçalama sürecidir.
+    - **1NF:** Tekrarlayan grupları çıkar, atomik değerler sağla.
+    - **2NF:** Kısmi bağımlılıkları (Partial Dependency) kaldır.
+    - **3NF:** Geçişli bağımlılıkları (Transitive Dependency) kaldır.
+    """)
+
+    if st.button("✨ Normalizasyon Sürecini Analiz Et (Ders Formatı)", type="primary"):
+        with st.spinner("Tablolar ayrıştırılıyor..."):
+            # Prompt: AI'yı her adımda değişen tablo yapılarını ayrı nesneler olarak dönmeye zorluyoruz
             prompt = f"""
-            System: You are a database expert.
-            Task: Normalize the domain '{domain}' with entities '{entities}'.
-            Output: Return ONLY a raw JSON object. No prose, no markdown code blocks.
+            As a Database Professor, decompose the '{domain}' system (Entities: {entities}) from 0NF to 3NF.
+            Return ONLY a raw JSON list. Each object represents a table in a specific NF stage.
             Structure:
-            {{
-                "0NF": [{{"table_name": "Initial", "columns": "all", "reason": "Unstructured"}}],
-                "1NF": [{{"table_name": "...", "columns": "...", "reason": "..."}}],
-                "2NF": [{{"table_name": "...", "columns": "...", "reason": "..."}}],
-                "3NF": [{{"table_name": "...", "columns": "...", "reason": "..."}}]
-            }}
+            [
+                {{"Stage": "1NF", "TableName": "...", "Columns": "...", "Key": "PK", "Description": "Atomic conversion"}},
+                {{"Stage": "2NF", "TableName": "...", "Columns": "...", "Key": "PK, FK", "Description": "Removed partial dependency"}},
+                {{"Stage": "3NF", "TableName": "...", "Columns": "...", "Key": "PK, FK", "Description": "Removed transitive dependency"}}
+            ]
+            Provide a complete decomposition where 3NF shows the final multi-table schema.
             """
             
-            # call_ai fonksiyonun regex ile [ ] arasını aldığı için promptu sadeleştirdik
             result = call_ai(prompt)
             
             if result:
-                st.session_state.norm_steps = result
-                st.success("Analiz başarıyla tamamlandı!")
+                st.session_state.norm_data = result
+                st.success("Normalizasyon ayrıştırması tamamlandı!")
             else:
-                st.error("AI veri döndüremedi veya format hatalı. Lütfen tekrar deneyin.")
+                st.error("AI veri formatını oluşturamadı. Lütfen tekrar deneyin.")
 
-    # Sonuçları ekrana basma
-    if 'norm_steps' in st.session_state and st.session_state.norm_steps:
-        # Dictionary veya List gelme durumuna göre kontrol ekliyoruz
-        steps = st.session_state.norm_steps
-        tabs = st.tabs(["🔴 0NF", "🟠 1NF", "🟡 2NF", "🟢 3NF"])
+    # --- TABLOLARIN GÖSTERİMİ ---
+    if 'norm_data' in st.session_state and st.session_state.norm_data:
+        norm_list = st.session_state.norm_data
         
-        # Eğer veri bir listeyse (bazen AI doğrudan liste dönebilir), sözlüğe çevirelim veya hata basalım
-        if isinstance(steps, dict):
-            for i, step_key in enumerate(["0NF", "1NF", "2NF", "3NF"]):
-                with tabs[i]:
-                    data = steps.get(step_key, [])
-                    if data:
-                        st.table(data)
-                        if step_key == "3NF":
-                            st.session_state.table_defs = data
-                    else:
-                        st.warning(f"{step_key} aşaması için veri üretilemedi.")
-        else:
-            st.warning("Beklenmeyen veri formatı alındı. Lütfen tekrar butonuna basın.")
+        # Her aşama için bir sekme
+        tabs = st.tabs(["🔴 1. Normal Form", "🟡 2. Normal Form", "🟢 3. Normal Form"])
+        
+        stages = ["1NF", "2NF", "3NF"]
+        for i, stage in enumerate(stages):
+            with tabs[i]:
+                st.markdown(f"### {stage} Aşamasındaki Tablo Yapıları")
+                
+                # İlgili NF aşamasına ait tüm tabloları filtrele
+                stage_tables = [t for t in norm_list if t.get("Stage") == stage]
+                
+                if stage_tables:
+                    for table in stage_tables:
+                        with st.expander(f"📋 Tablo: {table.get('TableName')}", expanded=True):
+                            # Tablo detaylarını göster
+                            st.write(f"**Anahtarlar:** `{table.get('Key')}`")
+                            st.write(f"**Kolonlar:** {table.get('Columns')}")
+                            st.caption(f"*Mantık:* {table.get('Description')}")
+                            
+                    # Ayrıca tüm aşamayı özet bir tablo olarak göster
+                    st.divider()
+                    st.dataframe(stage_tables, use_container_width=True)
+                else:
+                    st.info(f"{stage} analizi için veri bulunamadı.")
 
 # STAGE 5: ER DIAGRAM
 elif st.session_state.active_stage == 5:
-    st.subheader("🖼️ Stage 5: ER Diagram (Crow’s Foot Notation)")
-    
-    if st.button("✨ ER Diyagramını Oluştur", type="primary"):
-        with st.spinner("Şema analiz ediliyor ve görselleştiriliyor..."):
-            # Prompt'u daha profesyonel bir diyagram için güçlendirdik
-            prompt = f"""
-            Generate a detailed Mermaid.js ER diagram using Crow's Foot notation for:
-            Domain: {domain}
-            Entities & Attributes: {entities}
-            Include Primary Keys (PK) and Foreign Keys (FK) relationships.
-            Return ONLY the raw mermaid code block.
-            """
-            
+    st.subheader("🖼️ Stage 6: ER Diagram (Crow’s Foot Notation)")
+    if st.button("✨ ER Diyagramını Oluştur"):
+        with st.spinner("Şema analiz ediliyor..."):
+            prompt = f"Generate a Mermaid.js ER diagram using Crow's Foot notation for Domain: {domain}, Entities: {entities}. Return ONLY mermaid code."
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             mermaid_code = response.choices[0].message.content.replace("```mermaid", "").replace("```", "").strip()
-            
-            # Base64 dönüşümü
             import base64
             encoded_string = base64.b64encode(mermaid_code.encode('utf-8')).decode('utf-8')
-            image_url = f"https://mermaid.ink/img/{encoded_string}"
-            
-            # --- ORTALAMA VE KÜÇÜLTME MANTIĞI ---
-            # 3 sütun oluşturuyoruz: Yanlar boş, orta sütun resmi tutar.
-            # [1, 2, 1] oranı resmi sayfanın %50'sine odaklar ve ortalar.
-            col_left, col_mid, col_right = st.columns([1, 2, 1])
-            
-            with col_mid:
-                st.image(
-                    image_url, 
-                    use_container_width=True, # Orta sütunun genişliğine sığdır (böylece devasa olmaz)
-                    caption=f"Mimarisi: {domain}"
-                )
-            
-            st.success("✅ ER Diyagramı başarıyla oluşturuldu ve optimize edildi!")
-
-            # Teknik detayları merak edenler için kodu aşağıya gizleyelim
-            with st.expander("🛠️ Mermaid Kaynak Kodunu Görüntüle"):
-                st.code(mermaid_code, language="mermaid")
+            st.image(f"https://mermaid.ink/img/{encoded_string}", use_container_width=True)
+            st.success("ER Diyagramı başarıyla oluşturuldu!")
 
 # STAGE 6: SQL SCRIPT
 elif st.session_state.active_stage == 6:
