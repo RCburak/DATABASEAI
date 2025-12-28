@@ -290,79 +290,49 @@ elif st.session_state.active_stage == 5:
                 
             st.success("✅ Diyagram başarıyla optimize edildi.")
 
-# STAGE 6: SQL SCRIPT (Academic Standard: Metadata, Triggers & Logic)
+# STAGE 6: SQL SCRIPT (Hata Önleyici & Akademik Standart)
 elif st.session_state.active_stage == 6:
     st.subheader("⌨️ Stage 6: SQL Code Generation (Full Academic Version)")
     
     if st.button("✨ ChatGPT ile Tam SQL ve Trigger Betiği Üret"):
-        with st.spinner("Ders projesi standartlarında SQL mimarisi ve tetikleyiciler hazırlanıyor..."):
-            # Hem ana kuralları hem de fixlenen eksiklikleri AI'ya gönderiyoruz
-            main_rules = str(st.session_state.rules_data)
-            fixed_rules = str(st.session_state.missing_data)
+        with st.spinner("Sözdizimi hataları ayıklanıyor..."):
+            # Güncel kuralları al
+            main_rules = str(st.session_state.get('rules_data', []))
             
             prompt = f"""
-            As a Senior Database Architect, generate a full MySQL script for the '{domain}' system.
+            As a Senior Database Architect, generate a full MySQL/MariaDB script for '{domain}'.
             Entities: {entities}.
-            Business Logic: {constraints}.
+            Constraints: {constraints}.
 
             STRICT ACADEMIC REQUIREMENTS:
-            1. DOCUMENTATION TABLE: Create a table named `_business_rules` (id INT PRIMARY KEY AUTO_INCREMENT, rule_id VARCHAR(10), rule_description TEXT, logic_type VARCHAR(50)).
-               - IMPORTANT: Use 'CREATE TABLE IF NOT EXISTS'. 
-               - DO NOT include 'DROP TABLE' or 'TRUNCATE'. Existing data in PHPMyAdmin must be preserved and new rules must be APPENDED.
-               - Insert all original rules ({main_rules}) and fixed rules ({fixed_rules}) into this table so they are added to existing ones.
-            2. CREATE TABLES: Use backticks, proper PK/FK relations, and NOT NULL constraints.
-            3. TRIGGERS: Write 'BEFORE INSERT' triggers for the rules: {constraints} AND the fixed rules in {fixed_rules}.
-            4. ERROR HANDLING: Inside triggers, use 'SIGNAL SQLSTATE '45000'' with a custom MESSAGE_TEXT (e.g., 'BR001 Violation: Max 3 books!').
-            5. COMPATIBILITY: Wrap all triggers with 'DELIMITER //' and 'DELIMITER ;'.
-            6. SAMPLE DATA: Include realistic 'INSERT INTO' statements for all tables.
-            7. FORMAT: Return ONLY the raw SQL code block. No explanations.
+            1. DOCUMENTATION: Use 'CREATE TABLE IF NOT EXISTS `_business_rules`'. 
+               INSERT ALL original rules from this list: {main_rules}.
+            2. CREATE TABLES: Use 'CREATE TABLE IF NOT EXISTS' for all primary entities like {entities}.
+            3. TRIGGERS: Write 'BEFORE INSERT' triggers for the rules. 
+               - DO NOT use @variables. Use local 'DECLARE var_name INT;' inside BEGIN...END.
+               - Wrap EACH trigger with 'DELIMITER //' and 'DELIMITER ;'.
+               - Use 'DROP TRIGGER IF EXISTS' before each.
+            4. ERROR HANDLING: Use 'SIGNAL SQLSTATE '45000'' for rule violations.
+            5. FORMAT: Return ONLY the raw SQL code block. No explanations.
             """
             
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             raw_content = response.choices[0].message.content
             
-            # Markdown temizliği (SQL bloğunu ayıkla)
+            # Markdown temizliği
             sql_match = re.search(r"```sql\n(.*?)\n```", raw_content, re.DOTALL)
             clean_sql = sql_match.group(1) if sql_match else raw_content.replace("```sql", "").replace("```", "")
             
-            # Gereksiz AI metinlerini temizle
-            lines = clean_sql.strip().split('\n')
-            sql_only_lines = [
-                line for line in lines 
-                if not any(line.strip().upper().startswith(x) for x in ["CREATE DATABASE", "USE", "CERTAINLY", "HERE IS", "NOTE:"])
-            ]
-            
-            st.session_state.full_sql = "\n".join(sql_only_lines).strip()
+            st.session_state.full_sql = clean_sql.strip()
+            st.success("✅ SQL ve Triggerlar MariaDB standartlarına göre üretildi.")
 
     if 'full_sql' in st.session_state:
-        st.success("✅ SQL, Triggerlar ve Business Rules Tablosu Başarıyla Üretildi!")
-        
-        # PHPMyAdmin Kullanıcı Rehberi
-        st.warning("""
-        🚀 **PHPMyAdmin Kurulum Rehberi:**
-        1. SQL sekmesinin en altındaki **'Sınırlayıcı' (Delimiter)** kutusuna `//` yazın.
-        2. Bu SQL kodunu her çalıştırdığınızda `_business_rules` tablosundaki veriler silinmez, üzerine eklenir.
-        3. Kodu yapıştırırken en üstteki `DELIMITER //` satırını silin (PHPMyAdmin kutudan okur).
-        4. Önceki verilerden dolayı 'Duplicate Entry' hatası alırsanız, ilgili tabloyu boşaltın.
-        """)
-        
-        st.info("💡 **Ders Notu:** `_business_rules` tablosu kurallarınızı liste olarak gösterir, Triggerlar ise bu kuralları korur.")
-        
         st.code(st.session_state.full_sql, language="sql")
-        
-        # Dosya indirme butonu
-        st.download_button(
-            label="📄 SQL Dosyasını İndir",
-            data=st.session_state.full_sql,
-            file_name=f"{domain.lower().replace(' ', '_')}_complete.sql",
-            mime="text/sql"
-        )
+        st.download_button("📄 SQL Dosyasını İndir", st.session_state.full_sql, file_name="schema.sql")
 
-# STAGE 7: DEPLOY
+# STAGE 7: DEPLOY (Zeki SQL Bölücü)
 elif st.session_state.active_stage == 7:
     st.subheader("🚀 Final Step: Deployment to PHPMyAdmin")
-    
-    # Veritabanı ismini tek bir yerden yönetiyoruz
     safe_db_name = domain.lower().replace(" ", "_") + "_db"
     
     if st.button("🚀 EXECUTE ON MySQL"):
@@ -370,56 +340,55 @@ elif st.session_state.active_stage == 7:
             st.error("Önce 'SQL Script' aşamasında kod üretmelisiniz!")
         else:
             try:
-                # 1. Bağlantı ve Tek Bir DB Oluşturma/Seçme
                 conn = mysql.connector.connect(host="localhost", user="root", password="")
                 cursor = conn.cursor()
                 cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{safe_db_name}`")
                 cursor.execute(f"USE `{safe_db_name}`")
-                
-                # 2. Foreign Key hatalarını (errno 150) engellemek için kontrolleri kapat
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
                 
-                # 3. SQL komutlarını yürüt
-                sql_commands = st.session_state.full_sql.split(';')
+                # --- AKILLI SQL BÖLME (REGEX) ---
+                import re
+                raw_sql = st.session_state.full_sql
+                sql_commands = []
                 
+                # 1. Trigger bloklarını (DELIMITER bloklarını) ayır
+                trigger_pattern = r"DELIMITER //(.*?)\/\/ DELIMITER ;"
+                triggers = re.findall(trigger_pattern, raw_sql, re.DOTALL)
+                
+                # 2. Triggerları ana metinden çıkar ve kalan komutları ; ile böl
+                non_trigger_sql = re.sub(trigger_pattern, "", raw_sql, flags=re.DOTALL)
+                
+                for cmd in non_trigger_sql.split(';'):
+                    if cmd.strip(): sql_commands.append(cmd.strip())
+                for trg in triggers:
+                    if trg.strip(): sql_commands.append(trg.strip())
+
                 success_count = 0
                 error_logs = []
 
                 for command in sql_commands:
-                    clean_command = command.strip()
-                    
-                    # KRİTİK FİLTRE: Eğer komut CREATE DATABASE veya USE ise ATLA
-                    # Bu sayede AI'nın 'kanit57' gibi komutları sizin DB'nizi bozamaz
-                    if clean_command:
-                        upper_cmd = clean_command.upper()
-                        if any(upper_cmd.startswith(x) for x in ["CREATE DATABASE", "USE"]):
-                            continue 
-                        
-                        # Sadece geçerli SQL başlangıçlarını çalıştır
-                        if any(upper_cmd.startswith(x) for x in ["CREATE", "INSERT", "ALTER", "DROP", "SET"]):
-                            try:
-                                cursor.execute(clean_command)
-                                success_count += 1
-                            except Exception as e:
-                                error_logs.append(f"Hata: {str(e)}")
+                    upper_cmd = command.upper().strip()
+                    if any(upper_cmd.startswith(x) for x in ["CREATE", "INSERT", "ALTER", "DROP", "SET"]):
+                        try:
+                            cursor.execute(command)
+                            success_count += 1
+                        except Exception as e:
+                            error_logs.append(f"Hata: {str(e)}")
                 
-                # 4. Kontrolleri geri aç ve işlemi onayla
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
                 conn.commit()
                 
                 if success_count > 0:
-                    st.success(f"✅ Tablolar başarıyla `{safe_db_name}` veritabanına aktarıldı!")
+                    st.success(f"✅ {success_count} komut başarıyla aktarıldı!")
                     st.balloons()
-                
                 if error_logs:
-                    with st.expander("Bazı komutlar işlenemedi (Sözdizimi hataları olabilir)"):
-                        for log in error_logs:
-                            st.warning(log)
+                    with st.expander("Bazı komutlar işlenemedi"):
+                        for log in error_logs: st.warning(log)
                 
                 cursor.close()
                 conn.close()
             except Exception as e:
-                st.error(f"MySQL Bağlantı Hatası: {e}")
+                st.error(f"Bağlantı Hatası: {e}")
 
 if st.session_state.active_stage == 0:
     st.info("Süreci başlatmak için lütfen sol menüdeki tanımları yapın ve Stage 1'e tıklayın.")
