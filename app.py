@@ -201,68 +201,84 @@ elif st.session_state.active_stage == 3:
         with st.expander("Güncel Business Rules Listesini Gör"):
             st.table(st.session_state.rules_data)
 
-# STAGE 4: NORMALIZATION (0NF -> 1NF -> 2NF -> 3NF Decomposition)
+# STAGE 4: NORMALIZATION (Decomposition Logic)
 elif st.session_state.active_stage == 4:
-    st.subheader("⚡ Stage 4: Database Normalization Process")
+    st.subheader("⚡ Stage 4: Database Normalization (0NF to 3NF)")
     
-    st.markdown("""
-    Ders projesi standartlarında normalizasyon, verideki fonksiyonel bağımlılıkları analiz ederek tabloları parçalama sürecidir.
-    - **1NF:** Tekrarlayan grupları çıkar, atomik değerler sağla.
-    - **2NF:** Kısmi bağımlılıkları (Partial Dependency) kaldır.
-    - **3NF:** Geçişli bağımlılıkları (Transitive Dependency) kaldır.
+    st.info("""
+    **Normalizasyon Süreci Ders Notu:**
+    1. **1NF:** Atomik olmayan (tekrarlayan) grupları çıkartın.
+    2. **2NF:** Birleşik anahtar varsa, kısmi bağımlılıkları (Partial Dependency) kaldırın.
+    3. **3NF:** Anahtar olmayan bir kolonun başka bir anahtar olmayan kolona bağımlılığını (Transitive Dependency) kaldırın.
     """)
 
-    if st.button("✨ Normalizasyon Sürecini Analiz Et (Ders Formatı)", type="primary"):
-        with st.spinner("Tablolar ayrıştırılıyor..."):
-            # Prompt: AI'yı her adımda değişen tablo yapılarını ayrı nesneler olarak dönmeye zorluyoruz
+    if st.button("✨ Akademik Normalizasyon Analizi Yap", type="primary"):
+        with st.spinner("Tablolar normal formlara göre ayrıştırılıyor..."):
+            # AI'ya ders formatında ayrıştırma yapması için detaylı prompt
             prompt = f"""
-            As a Database Professor, decompose the '{domain}' system (Entities: {entities}) from 0NF to 3NF.
-            Return ONLY a raw JSON list. Each object represents a table in a specific NF stage.
+            As a Database Professor, perform a step-by-step normalization for: '{domain}'.
+            Entities: {entities}.
+            
+            Return ONLY a raw JSON list of objects. Each object represents a Table at a specific Normal Form.
             Structure:
             [
-                {{"Stage": "1NF", "TableName": "...", "Columns": "...", "Key": "PK", "Description": "Atomic conversion"}},
-                {{"Stage": "2NF", "TableName": "...", "Columns": "...", "Key": "PK, FK", "Description": "Removed partial dependency"}},
-                {{"Stage": "3NF", "TableName": "...", "Columns": "...", "Key": "PK, FK", "Description": "Removed transitive dependency"}}
+                {{
+                    "Stage": "1NF", 
+                    "TableName": "Big_Table_Name", 
+                    "Columns": "List all atomic columns", 
+                    "Primary_Key": "PK",
+                    "Action": "Combined all related data and ensured atomicity."
+                }},
+                {{
+                    "Stage": "2NF", 
+                    "TableName": "Split_Table_Name", 
+                    "Columns": "Columns belonging to this PK", 
+                    "Primary_Key": "PK",
+                    "Action": "Removed Partial Dependencies."
+                }},
+                {{
+                    "Stage": "3NF", 
+                    "TableName": "Final_Table_Name", 
+                    "Columns": "Columns with no transitive dependency", 
+                    "Primary_Key": "PK",
+                    "Action": "Removed Transitive Dependencies."
+                }}
             ]
-            Provide a complete decomposition where 3NF shows the final multi-table schema.
+            Provide the complete decomposition. 3NF results should show the final production tables.
             """
             
-            result = call_ai(prompt)
+            normalization_results = call_ai(prompt)
             
-            if result:
-                st.session_state.norm_data = result
+            if normalization_results:
+                st.session_state.norm_data = normalization_results
                 st.success("Normalizasyon ayrıştırması tamamlandı!")
-            else:
-                st.error("AI veri formatını oluşturamadı. Lütfen tekrar deneyin.")
 
-    # --- TABLOLARIN GÖSTERİMİ ---
+    # --- AYRIŞTIRILMIŞ TABLOLARIN GÖSTERİMİ ---
     if 'norm_data' in st.session_state and st.session_state.norm_data:
-        norm_list = st.session_state.norm_data
+        res = st.session_state.norm_data
         
-        # Her aşama için bir sekme
-        tabs = st.tabs(["🔴 1. Normal Form", "🟡 2. Normal Form", "🟢 3. Normal Form"])
+        # Sekmeler halinde NF aşamalarını göster
+        t1, t2, t3 = st.tabs(["🔴 1. Normal Form", "🟡 2. Normal Form", "🟢 3. Normal Form"])
         
-        stages = ["1NF", "2NF", "3NF"]
-        for i, stage in enumerate(stages):
-            with tabs[i]:
-                st.markdown(f"### {stage} Aşamasındaki Tablo Yapıları")
-                
-                # İlgili NF aşamasına ait tüm tabloları filtrele
-                stage_tables = [t for t in norm_list if t.get("Stage") == stage]
+        stages = {"1NF": t1, "2NF": t2, "3NF": t3}
+        
+        for stage_key, tab in stages.items():
+            with tab:
+                st.markdown(f"### {stage_key} Analizi")
+                # O aşamaya ait tabloları filtrele
+                stage_tables = [t for t in res if t.get("Stage") == stage_key]
                 
                 if stage_tables:
                     for table in stage_tables:
                         with st.expander(f"📋 Tablo: {table.get('TableName')}", expanded=True):
-                            # Tablo detaylarını göster
-                            st.write(f"**Anahtarlar:** `{table.get('Key')}`")
-                            st.write(f"**Kolonlar:** {table.get('Columns')}")
-                            st.caption(f"*Mantık:* {table.get('Description')}")
-                            
-                    # Ayrıca tüm aşamayı özet bir tablo olarak göster
-                    st.divider()
-                    st.dataframe(stage_tables, use_container_width=True)
+                            col_a, col_b = st.columns([2, 1])
+                            with col_a:
+                                st.write(f"**Kolonlar:** {table.get('Columns')}")
+                                st.caption(f"*İşlem:* {table.get('Action')}")
+                            with col_b:
+                                st.markdown(f"🔑 **PK:** `{table.get('Primary_Key')}`")
                 else:
-                    st.info(f"{stage} analizi için veri bulunamadı.")
+                    st.warning(f"{stage_key} için ayrıştırma verisi üretilemedi.")
 
 # STAGE 5: ER DIAGRAM
 elif st.session_state.active_stage == 5:
