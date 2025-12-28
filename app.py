@@ -290,13 +290,13 @@ elif st.session_state.active_stage == 5:
                 
             st.success("✅ Diyagram başarıyla optimize edildi.")
 
-# STAGE 6: SQL SCRIPT (Hata Önleyici & Akademik Standart)
+# STAGE 6: SQL SCRIPT (Append Mode: Birikimli Veri Aktarımı)
 elif st.session_state.active_stage == 6:
-    st.subheader("⌨️ Stage 6: SQL Code Generation (Full Academic Version)")
+    st.subheader("⌨️ Stage 6: SQL Code Generation (Cumulative Mode)")
     
     if st.button("✨ ChatGPT ile Tam SQL ve Trigger Betiği Üret"):
-        with st.spinner("Sözdizimi hataları ayıklanıyor..."):
-            # Güncel kuralları al
+        with st.spinner("Güncel ve yeni kurallar birleştiriliyor..."):
+            # Stage 1 ve Stage 3'teki tüm fixlenmiş kuralları alıyoruz
             main_rules = str(st.session_state.get('rules_data', []))
             
             prompt = f"""
@@ -304,33 +304,32 @@ elif st.session_state.active_stage == 6:
             Entities: {entities}.
             Constraints: {constraints}.
 
-            STRICT ACADEMIC REQUIREMENTS:
-            1. DOCUMENTATION: Use 'CREATE TABLE IF NOT EXISTS `_business_rules`'. 
-               INSERT ALL original rules from this list: {main_rules}.
-            2. CREATE TABLES: Use 'CREATE TABLE IF NOT EXISTS' for all primary entities like {entities}.
-            3. TRIGGERS: Write 'BEFORE INSERT' triggers for the rules. 
-               - DO NOT use @variables. Use local 'DECLARE var_name INT;' inside BEGIN...END.
-               - Wrap EACH trigger with 'DELIMITER //' and 'DELIMITER ;'.
-               - Use 'DROP TRIGGER IF EXISTS' before each.
-            4. ERROR HANDLING: Use 'SIGNAL SQLSTATE '45000'' for rule violations.
-            5. FORMAT: Return ONLY the raw SQL code block. No explanations.
+            STRICT REQUIREMENTS FOR PHPMyAdmin CUMULATIVE VIEW:
+            1. DOCUMENTATION TABLE: Create a table named `_business_rules` with columns: `id` (INT PK AUTO_INCREMENT), `rule_id` (VARCHAR), `rule_description` (TEXT), `logic_type` (VARCHAR), `created_at` (TIMESTAMP).
+               - IMPORTANT: Use 'CREATE TABLE IF NOT EXISTS'.
+               - NEVER use 'DROP TABLE' or 'TRUNCATE'. I want to keep old data.
+               - Convert ALL rules in this list to INSERT statements: {main_rules}.
+            2. NO VARIABLE ERRORS: DO NOT use @variables. Use local 'DECLARE var_name INT;' inside BEGIN...END.
+            3. TRIGGERS: Write 'BEFORE INSERT' triggers. Wrap EACH with 'DELIMITER //' and 'DELIMITER ;'.
+            4. CREATE TABLES: Use 'CREATE TABLE IF NOT EXISTS' for all entities.
+            5. FORMAT: Return ONLY raw SQL. No explanations.
             """
             
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             raw_content = response.choices[0].message.content
             
-            # Markdown temizliği
+            # SQL bloğunu temizleme
             sql_match = re.search(r"```sql\n(.*?)\n```", raw_content, re.DOTALL)
             clean_sql = sql_match.group(1) if sql_match else raw_content.replace("```sql", "").replace("```", "")
             
             st.session_state.full_sql = clean_sql.strip()
-            st.success("✅ SQL ve Triggerlar MariaDB standartlarına göre üretildi.")
+            st.success("✅ SQL Hazır! Yeni fixlenen kurallar PHPMyAdmin'deki listenin altına eklenecek.")
 
     if 'full_sql' in st.session_state:
         st.code(st.session_state.full_sql, language="sql")
-        st.download_button("📄 SQL Dosyasını İndir", st.session_state.full_sql, file_name="schema.sql")
+        st.download_button("📄 SQL Dosyasını İndir", st.session_state.full_sql, file_name="cumulative_schema.sql")
 
-# STAGE 7: DEPLOY (Zeki SQL Bölücü)
+# STAGE 7: DEPLOY (Zeki SQL Yürütücü)
 elif st.session_state.active_stage == 7:
     st.subheader("🚀 Final Step: Deployment to PHPMyAdmin")
     safe_db_name = domain.lower().replace(" ", "_") + "_db"
@@ -346,26 +345,26 @@ elif st.session_state.active_stage == 7:
                 cursor.execute(f"USE `{safe_db_name}`")
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
                 
-                # --- AKILLI SQL BÖLME (REGEX) ---
+                # --- TETİKLEYİCİLERİ VE NORMAL KOMUTLARI AYIRAN AKILLI BÖLÜCÜ ---
                 import re
                 raw_sql = st.session_state.full_sql
                 sql_commands = []
                 
-                # 1. Trigger bloklarını (DELIMITER bloklarını) ayır
+                # 1. Trigger bloklarını ayır
                 trigger_pattern = r"DELIMITER //(.*?)\/\/ DELIMITER ;"
                 triggers = re.findall(trigger_pattern, raw_sql, re.DOTALL)
                 
-                # 2. Triggerları ana metinden çıkar ve kalan komutları ; ile böl
+                # 2. Normal komutları (CREATE, INSERT) ayır
                 non_trigger_sql = re.sub(trigger_pattern, "", raw_sql, flags=re.DOTALL)
-                
                 for cmd in non_trigger_sql.split(';'):
                     if cmd.strip(): sql_commands.append(cmd.strip())
+                
+                # 3. Hepsini listeye ekle
                 for trg in triggers:
                     if trg.strip(): sql_commands.append(trg.strip())
 
                 success_count = 0
                 error_logs = []
-
                 for command in sql_commands:
                     upper_cmd = command.upper().strip()
                     if any(upper_cmd.startswith(x) for x in ["CREATE", "INSERT", "ALTER", "DROP", "SET"]):
@@ -377,14 +376,12 @@ elif st.session_state.active_stage == 7:
                 
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
                 conn.commit()
-                
                 if success_count > 0:
-                    st.success(f"✅ {success_count} komut başarıyla aktarıldı!")
+                    st.success(f"✅ {success_count} komut başarıyla aktarıldı! PHPMyAdmin'i kontrol edin.")
                     st.balloons()
                 if error_logs:
-                    with st.expander("Bazı komutlar işlenemedi"):
+                    with st.expander("Bazı hatalar oluştu (Değişken veya tablo sorunları)"):
                         for log in error_logs: st.warning(log)
-                
                 cursor.close()
                 conn.close()
             except Exception as e:
