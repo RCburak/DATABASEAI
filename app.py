@@ -8,14 +8,14 @@ import time
 from dotenv import load_dotenv
 from streamlit_mermaid import st_mermaid
 
-# --- 1. KONFİGÜRASYON ---
+# --- 1. CONFIGURATION ---
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=api_key)
 
 st.set_page_config(page_title="Modular Database Architect AI", layout="wide")
 
-# --- 2. CSS TASARIMI ---
+# --- 2. CSS DESIGN ---
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
@@ -26,7 +26,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. SENARYOLAR ---
+# --- 3. SCENARIOS ---
 scenarios = {
     "University Library System": {
         "domain": "University Library System", "entities": "Books, Students, Loans, Authors",
@@ -60,17 +60,17 @@ with st.sidebar:
     temp_db_name = st.session_state.form_data["domain"].lower().replace(" ", "_") + "_db"
     
     # VERİTABANINI SIFIRLAMA (DROP DATABASE)
-    if st.button("🚨 TÜM VERİTABANINI SİL"):
+    if st.button("🚨 DELETE ENTIRE DATABASE"):
         try:
             conn = mysql.connector.connect(host="localhost", user="root", password="")
             cursor = conn.cursor()
             cursor.execute(f"DROP DATABASE IF EXISTS `{temp_db_name}`")
-            st.sidebar.warning(f"💥 `{temp_db_name}` veritabanı silindi.")
+            st.sidebar.warning(f"💥 Database `{temp_db_name}` has been deleted.")
             st.session_state.active_stage = 0
             time.sleep(0.5)
             st.rerun()
         except Exception as e:
-            st.sidebar.error(f"Bağlantı Hatası: {e}")
+            st.sidebar.error(f"Connection Error: {e}")
 
     st.divider()
 
@@ -130,8 +130,8 @@ def call_ai(prompt):
 # STAGE 1: BUSINESS RULES
 if st.session_state.active_stage == 1:
     st.subheader("📋 Stage 1 & 2: Extraction of Business Rules")
-    if st.button("✨ ChatGPT ile Kuralları Oluştur"):
-        with st.spinner("Analiz ediliyor..."):
+    if st.button("✨ Generate Rules with ChatGPT"):
+        with st.spinner("Analyzing..."):
             prompt = f"Extract business rules for {domain}. Entities: {entities}. Rules: {constraints}. Return JSON list: BR-ID, Type (S,O,T,Y), Rule Statement, ER Component (E,R,A,C), Implementation Tip, Rationale."
             st.session_state.rules_data = call_ai(prompt)
     if st.session_state.rules_data: st.table(st.session_state.rules_data)
@@ -139,8 +139,8 @@ if st.session_state.active_stage == 1:
 # STAGE 2: TABLE DEFINITIONS
 elif st.session_state.active_stage == 2:
     st.subheader("📐 Stage 3: Table Definition (Data Dictionary)")
-    if st.button("✨ ChatGPT ile Tablo Şemalarını Oluştur"):
-        with st.spinner("Şemalar düzenleniyor..."):
+    if st.button("✨ Generate Table Schemas with ChatGPT"):
+        with st.spinner("Organizing schemas..."):
             prompt = f"""
             Database Architect: Define tables for {entities}. 
             Return a JSON list of objects. Each object MUST have:
@@ -156,15 +156,15 @@ elif st.session_state.active_stage == 2:
                 if 'relationships' in table:
                     st.caption(f"🔗 **Relationships:** {table['relationships']}")
     else:
-        st.warning("Lütfen şemaları oluşturmak için butona basın.")
+        st.warning("Please click the button to generate schemas.")
 
 # STAGE 3: DETECTING & FIXING MISSING RULES
 elif st.session_state.active_stage == 3:
     st.subheader("🔍 Stage 4: Detecting & Fixing Missing Rules")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔍 1. Adım: Eksiklikleri Tara"):
-            with st.spinner("Mantıksal açıklar ve eksik kurallar aranıyor..."):
+        if st.button("🔍 Step 1: Scan for Gaps"):
+            with st.spinner("Searching for logical gaps and missing rules..."):
                 prompt = f"""
                 Analyze the database rules for {domain}. 
                 Current Entities: {entities}. 
@@ -174,13 +174,13 @@ elif st.session_state.active_stage == 3:
                 """
                 st.session_state.missing_data = call_ai(prompt)
         if st.session_state.missing_data:
-            st.markdown("### 📋 Tespit Edilen Eksiklikler")
+            st.markdown("### 📋 Detected Gaps")
             st.table(st.session_state.missing_data)
 
     with col2:
         if st.session_state.missing_data:
-            if st.button("🔧 2. Adım: Kuralları Fixle ve Business Rules'a Ekle"):
-                with st.spinner("Eksik kurallar ana listeye entegre ediliyor..."):
+            if st.button("🔧 Step 2: Fix and Add to Business Rules"):
+                with st.spinner("Integrating missing rules into main list..."):
                     current_rules_text = str(st.session_state.rules_data)
                     missing_rules_text = str(st.session_state.missing_data)
                     prompt = f"""
@@ -192,13 +192,13 @@ elif st.session_state.active_stage == 3:
                     updated_rules = call_ai(prompt)
                     if updated_rules:
                         st.session_state.rules_data = updated_rules
-                        st.success("✅ Eksik kurallar başarıyla 'Business Rules' aşamasına eklendi!")
+                        st.success("✅ Missing rules successfully added to 'Business Rules' stage!")
                         st.balloons()
         else:
-            st.info("Önce eksiklikleri taramanız gerekmektedir.")
+            st.info("You must scan for gaps first.")
 
     if st.session_state.rules_data:
-        with st.expander("Güncel Business Rules Listesini Gör"):
+        with st.expander("View Updated Business Rules List"):
             st.table(st.session_state.rules_data)
 
 # STAGE 4: NORMALIZATION (Decomposition Logic)
@@ -206,14 +206,14 @@ elif st.session_state.active_stage == 4:
     st.subheader("⚡ Stage 4: Database Normalization (0NF to 3NF)")
     
     st.info("""
-    **Normalizasyon Süreci Ders Notu:**
-    1. **1NF:** Atomik olmayan (tekrarlayan) grupları çıkartın.
-    2. **2NF:** Birleşik anahtar varsa, kısmi bağımlılıkları (Partial Dependency) kaldırın.
-    3. **3NF:** Anahtar olmayan bir kolonun başka bir anahtar olmayan kolona bağımlılığını (Transitive Dependency) kaldırın.
+    **Normalization Process Lecture Note:**
+    1. **1NF:** Remove repeating groups, ensure atomic values.
+    2. **2NF:** Remove Partial Dependencies.
+    3. **3NF:** Remove Transitive Dependencies.
     """)
 
-    if st.button("✨ Akademik Normalizasyon Analizi Yap", type="primary"):
-        with st.spinner("Tablolar normal formlara göre ayrıştırılıyor..."):
+    if st.button("✨ Perform Academic Normalization Analysis", type="primary"):
+        with st.spinner("Decomposing tables according to normal forms..."):
             # AI'ya ders formatında ayrıştırma yapması için detaylı prompt
             prompt = f"""
             As a Database Professor, perform a step-by-step normalization for: '{domain}'.
@@ -251,41 +251,40 @@ elif st.session_state.active_stage == 4:
             
             if normalization_results:
                 st.session_state.norm_data = normalization_results
-                st.success("Normalizasyon ayrıştırması tamamlandı!")
+                st.success("Normalization decomposition complete!")
 
     # --- AYRIŞTIRILMIŞ TABLOLARIN GÖSTERİMİ ---
     if 'norm_data' in st.session_state and st.session_state.norm_data:
         res = st.session_state.norm_data
         
         # Sekmeler halinde NF aşamalarını göster
-        t1, t2, t3 = st.tabs(["🔴 1. Normal Form", "🟡 2. Normal Form", "🟢 3. Normal Form"])
+        t1, t2, t3 = st.tabs(["🔴 1st Normal Form", "🟡 2nd Normal Form", "🟢 3rd Normal Form"])
         
         stages = {"1NF": t1, "2NF": t2, "3NF": t3}
         
         for stage_key, tab in stages.items():
             with tab:
-                st.markdown(f"### {stage_key} Analizi")
-                # O aşamaya ait tabloları filtrele
+                st.markdown(f"### {stage_key} Analysis")
                 stage_tables = [t for t in res if t.get("Stage") == stage_key]
                 
                 if stage_tables:
                     for table in stage_tables:
-                        with st.expander(f"📋 Tablo: {table.get('TableName')}", expanded=True):
+                        with st.expander(f"📋 Table: {table.get('TableName')}", expanded=True):
                             col_a, col_b = st.columns([2, 1])
                             with col_a:
-                                st.write(f"**Kolonlar:** {table.get('Columns')}")
-                                st.caption(f"*İşlem:* {table.get('Action')}")
+                                st.write(f"**Columns:** {table.get('Columns')}")
+                                st.caption(f"*Action:* {table.get('Action')}")
                             with col_b:
                                 st.markdown(f"🔑 **PK:** `{table.get('Primary_Key')}`")
                 else:
-                    st.warning(f"{stage_key} için ayrıştırma verisi üretilemedi.")
+                    st.warning(f"No decomposition data produced for {stage_key}.")
 
 # STAGE 5: ER DIAGRAM
 elif st.session_state.active_stage == 5:
     st.subheader("🖼️ Stage 5: ER Diagram (Crow’s Foot Notation)")
     
-    if st.button("✨ ER Diyagramını Oluştur", type="primary"):
-        with st.spinner("Şema görselleştiriliyor..."):
+    if st.button("✨ Create ER Diagram", type="primary"):
+        with st.spinner("Visualizing schema..."):
             prompt = f"Generate a Mermaid.js ER diagram using Crow's Foot for: {domain}. Entities: {entities}. Return ONLY raw mermaid code."
             
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
@@ -296,22 +295,20 @@ elif st.session_state.active_stage == 5:
             image_url = f"https://mermaid.ink/img/{encoded_string}"
             
             # --- KÜÇÜLTME MANTIĞI ---
-            # Sütun oranlarını [2, 1, 2] yaparak diyagramı merkeze hapsediyoruz ve küçültüyoruz
             col_left, col_mid, col_right = st.columns([1, 1.5, 1])
             
             with col_mid:
-                st.markdown("🔍 **Önizleme (Küçültülmüş Görünüm)**")
-                # use_container_width=True kalsa bile col_mid dar olduğu için resim küçük görünecektir
+                st.markdown("🔍 **Preview (Scaled View)**")
                 st.image(image_url, use_container_width=True)
                 
-            st.success("✅ Diyagram başarıyla optimize edildi.")
+            st.success("✅ Diagram successfully optimized.")
 
 # STAGE 6: SQL SCRIPT (Tam Senkronizasyon ve Hata Önleyici)
 elif st.session_state.active_stage == 6:
     st.subheader("⌨️ Stage 6: SQL Code Generation (PHPMyAdmin Optimized)")
     
-    if st.button("✨ ChatGPT ile Tam SQL ve Trigger Betiği Üret"):
-        with st.spinner("Tablo yapıları ve kurallar senkronize ediliyor..."):
+    if st.button("✨ Generate Full SQL and Trigger Script with ChatGPT"):
+        with st.spinner("Synchronizing table structures and rules..."):
             # Stage 1 ve Stage 3'ten gelen güncel kuralları ve tablo tanımlarını alıyoruz
             main_rules = str(st.session_state.get('rules_data', []))
             table_definitions = str(st.session_state.get('table_defs', []))
@@ -338,10 +335,11 @@ elif st.session_state.active_stage == 6:
             clean_sql = sql_match.group(1) if sql_match else raw_content.replace("```sql", "").replace("```", "")
             
             st.session_state.full_sql = clean_sql.strip()
-            st.success("✅ SQL Hazır! Sütun isimleri tablo tanımlarıyla senkronize edildi.")
+            st.success("✅ SQL Ready! Column names synchronized with table definitions.")
 
     if 'full_sql' in st.session_state:
         st.code(st.session_state.full_sql, language="sql")
+        st.download_button("📄 Download SQL File", st.session_state.full_sql, file_name="schema.sql")
 
 # STAGE 7: DEPLOY (Zeki SQL Yürütücü)
 elif st.session_state.active_stage == 7:
@@ -350,7 +348,7 @@ elif st.session_state.active_stage == 7:
     
     if st.button("🚀 EXECUTE ON MySQL"):
         if 'full_sql' not in st.session_state or not st.session_state.full_sql:
-            st.error("Önce 'SQL Script' aşamasında kod üretmelisiniz!")
+            st.error("You must generate code in the 'SQL Script' stage first!")
         else:
             try:
                 conn = mysql.connector.connect(host="localhost", user="root", password="")
@@ -385,20 +383,20 @@ elif st.session_state.active_stage == 7:
                             cursor.execute(command)
                             success_count += 1
                         except Exception as e:
-                            error_logs.append(f"Hata: {str(e)}")
+                            error_logs.append(f"Error: {str(e)}")
                 
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
                 conn.commit()
                 if success_count > 0:
-                    st.success(f"✅ {success_count} komut başarıyla aktarıldı!")
+                    st.success(f"✅ {success_count} commands successfully deployed!")
                     st.balloons()
                 if error_logs:
-                    with st.expander("Bazı komutlar işlenemedi (Sütun adı hataları olabilir)"):
+                    with st.expander("Some commands could not be processed"):
                         for log in error_logs: st.warning(log)
                 cursor.close()
                 conn.close()
             except Exception as e:
-                st.error(f"MySQL Bağlantı Hatası: {e}")
+                st.error(f"MySQL Connection Error: {e}")
 
 if st.session_state.active_stage == 0:
-    st.info("Süreci başlatmak için lütfen sol menüdeki tanımları yapın ve Stage 1'e tıklayın.")
+    st.info("To start the process, please complete the definitions in the left menu and click Stage 1.")
