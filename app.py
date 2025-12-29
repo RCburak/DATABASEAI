@@ -136,148 +136,198 @@ if st.session_state.active_stage == 1:
             st.session_state.rules_data = call_ai(prompt)
     if st.session_state.rules_data: st.table(st.session_state.rules_data)
 
-# STAGE 2: TABLE DEFINITIONS
+# STAGE 2: TABLE DEFINITIONS (Business Rule Senkronizasyonu)
 elif st.session_state.active_stage == 2:
-    st.subheader("📐 Stage 3: Table Definition (Data Dictionary)")
-    if st.button("✨ Generate Table Schemas with ChatGPT"):
-        with st.spinner("Organizing schemas..."):
+    st.subheader("📐 Stage 2: Table Definition (Based on Final Business Rules)")
+    
+    # Mevcut kuralları kontrol et
+    if not st.session_state.rules_data:
+        st.warning("⚠️ Warning: Your Business Rules list is empty. Please generate and fix rules in Stage 1 & 3 first for better table design.")
+    
+    if st.button("✨ Generate Table Schemas from Final Rules"):
+        with st.spinner("Designing tables to support all business rules..."):
+            # En güncel, fixlenmiş kuralları AI'ya gönderiyoruz
+            final_rules_json = str(st.session_state.rules_data)
+            
             prompt = f"""
-            Database Architect: Define tables for {entities}. 
+            As a Database Architect, design a schema for the '{domain}' system.
+            
+            STRICT REQUIREMENT: 
+            The tables MUST support all logic defined in these Business Rules: {final_rules_json}.
+            
+            Example: If a rule says 'Max 3 books per student', ensure there is a relationship between Students and Loans.
+            Example: If a rule says 'Book status must be tracked', add a 'status' column to the 'Books' table.
+
             Return a JSON list of objects. Each object MUST have:
-            'table_name', 'columns' (a list of objects with 'name', 'type', 'constraints').
+            'table_name', 
+            'columns' (list of objects with 'name', 'type', 'constraints'),
+            'supported_rules' (list of BR-IDs this table helps implement).
             """
             st.session_state.table_defs = call_ai(prompt)
 
     if 'table_defs' in st.session_state and st.session_state.table_defs:
         for table in st.session_state.table_defs:
-            with st.expander(f"📂 Table: {table['table_name'].upper()}", expanded=True):
+            # Tablo ismini ve hangi kuralları desteklediğini başlıkta göster
+            supported = ", ".join(table.get('supported_rules', []))
+            with st.expander(f"📂 Table: {table['table_name'].upper()} (Supports: {supported})", expanded=True):
                 cols_data = table['columns'] 
                 st.table(cols_data)
+                
                 if 'relationships' in table:
                     st.caption(f"🔗 **Relationships:** {table['relationships']}")
     else:
-        st.warning("Please click the button to generate schemas.")
+        st.info("Click the button to generate schemas that match your fixed business rules.")
 
-# STAGE 3: DETECTING & FIXING MISSING RULES
+# STAGE 3: AUDIT, FIX & MISSING RULES (ID Takibi ile Denetim)
 elif st.session_state.active_stage == 3:
-    st.subheader("🔍 Stage 4: Detecting & Fixing Missing Rules")
+    st.subheader("🔍 Stage 3: Database Audit & Missing Rules Analysis")
+    
     col1, col2 = st.columns(2)
+    
     with col1:
-        if st.button("🔍 Step 1: Scan for Gaps"):
-            with st.spinner("Searching for logical gaps and missing rules..."):
+        if st.button("🔍 Step 1: Audit Current Rules & Scan Gaps"):
+            with st.spinner("Auditing your current rules for logical errors and gaps..."):
+                # Mevcut kuralları AI'ya gönderiyoruz
+                current_rules_json = str(st.session_state.rules_data)
+                
                 prompt = f"""
-                Analyze the database rules for {domain}. 
-                Current Entities: {entities}. 
-                Current Constraints: {constraints}.
-                Identify 3 missing or unclear database rules that are critical for integrity.
-                Return JSON list with keys: 'Missing Rule', 'Related BR', 'Solution'.
+                As a Senior Database Auditor, analyze these rules for '{domain}'.
+                
+                CURRENT RULES: {current_rules_json}
+
+                YOUR TASK:
+                1. If a rule has an error or needs improvement, identify it by its 'BR-ID'.
+                2. If a critical rule is missing, label it as 'NEW'.
+                3. Check for technical feasibility and redundant logic.
+
+                Return ONLY a JSON list with these keys: 
+                'Related BR' (BR-ID or NEW), 'Type' (Correction or Missing), 'Finding', 'Severity' (High/Medium), 'Proposed Solution'.
                 """
                 st.session_state.missing_data = call_ai(prompt)
+                
         if st.session_state.missing_data:
-            st.markdown("### 📋 Detected Gaps")
+            st.markdown("### 📋 Audit Findings & Missing Rules")
             st.table(st.session_state.missing_data)
 
     with col2:
         if st.session_state.missing_data:
-            if st.button("🔧 Step 2: Fix and Add to Business Rules"):
-                with st.spinner("Integrating missing rules into main list..."):
+            st.info("💡 Instructions: Corrections will update existing BRs, and 'NEW' items will be added as new BRs.")
+            if st.button("🔧 Step 2: Apply Fixes & Integrate to Business Rules"):
+                with st.spinner("Processing updates..."):
                     current_rules_text = str(st.session_state.rules_data)
-                    missing_rules_text = str(st.session_state.missing_data)
+                    audit_findings_text = str(st.session_state.missing_data)
+                    
                     prompt = f"""
-                    Merge these two lists into one comprehensive business rules list for {domain}.
-                    List 1 (Current): {current_rules_text}
-                    List 2 (Missing to Add): {missing_rules_text}
+                    Merge the audit findings into the main business rules list for '{domain}'.
+                    
+                    ORIGINAL LIST: {current_rules_text}
+                    AUDIT FINDINGS/ADDITIONS: {audit_findings_text}
+
+                    LOGIC:
+                    - If 'Related BR' matches an existing ID, replace that rule with the 'Proposed Solution'.
+                    - If 'Related BR' is 'NEW', add it as a new entry.
+                    - Re-index all BR-IDs to be sequential (BR-001, BR-002, etc.).
+                    
                     Return a SINGLE JSON list: BR-ID, Type (S,O,T,Y), Rule Statement, ER Component (E,R,A,C), Implementation Tip, Rationale.
                     """
                     updated_rules = call_ai(prompt)
                     if updated_rules:
                         st.session_state.rules_data = updated_rules
-                        st.success("✅ Missing rules successfully added to 'Business Rules' stage!")
+                        st.success("✅ Rules updated and new rules appended successfully!")
                         st.balloons()
+                        st.rerun()
         else:
-            st.info("You must scan for gaps first.")
+            st.info("Run the 'Audit' (Step 1) to analyze your rules.")
 
     if st.session_state.rules_data:
-        with st.expander("View Updated Business Rules List"):
-            st.table(st.session_state.rules_data)
+        with st.expander("📝 Preview Final Optimized Business Rules"):
+            st.table(st.session_state.rules_data) #
 
-# STAGE 4: NORMALIZATION (Decomposition Logic)
+# STAGE 4: NORMALIZATION (PHPMyAdmin Raporlama Entegrasyonlu)
 elif st.session_state.active_stage == 4:
-    st.subheader("⚡ Stage 4: Database Normalization (0NF to 3NF)")
+    st.subheader("⚡ Stage 4: Database Normalization (Academic Decomposition)")
     
     st.info("""
-    **Normalization Process Lecture Note:**
-    1. **1NF:** Remove repeating groups, ensure atomic values.
-    2. **2NF:** Remove Partial Dependencies.
-    3. **3NF:** Remove Transitive Dependencies.
+    **Normalizasyon Raporlama Mantığı:**
+    Bu aşamada yapılan analizler, Stage 6'da SQL olarak üretilecek ve PHPMyAdmin'de `_normalization_log` tablosuna kaydedilecektir. 
+    Bu sayede hocanız veritabanını açtığında normalizasyon adımlarınızı görebilecek.
     """)
 
-    if st.button("✨ Perform Academic Normalization Analysis", type="primary"):
-        with st.spinner("Decomposing tables according to normal forms..."):
-            # AI'ya ders formatında ayrıştırma yapması için detaylı prompt
+    if st.button("✨ Perform Academic Normalization & Log Analysis", type="primary"):
+        with st.spinner("Decomposing tables and creating audit logs..."):
+            # Mevcut tablo tanımlarını ve kuralları referans alarak analiz yaptırıyoruz
+            current_tables = str(st.session_state.get('table_defs', []))
+            
             prompt = f"""
             As a Database Professor, perform a step-by-step normalization for: '{domain}'.
-            Entities: {entities}.
+            Current Table Context: {current_tables}.
+
+            Analyze from 0NF to 3NF. 
+            Return ONLY a raw JSON list of objects. Each object represents a step in the process.
             
-            Return ONLY a raw JSON list of objects. Each object represents a Table at a specific Normal Form.
             Structure:
             [
                 {{
-                    "Stage": "1NF", 
-                    "TableName": "Big_Table_Name", 
-                    "Columns": "List all atomic columns", 
+                    "NF_Stage": "1NF", 
+                    "Target_Table": "Table Name", 
+                    "Columns_Included": "list columns", 
                     "Primary_Key": "PK",
-                    "Action": "Combined all related data and ensured atomicity."
+                    "Reasoning": "Why this is 1NF (e.g., ensuring atomicity)"
                 }},
                 {{
-                    "Stage": "2NF", 
-                    "TableName": "Split_Table_Name", 
-                    "Columns": "Columns belonging to this PK", 
+                    "NF_Stage": "2NF", 
+                    "Target_Table": "Split Table Name", 
+                    "Columns_Included": "list columns", 
                     "Primary_Key": "PK",
-                    "Action": "Removed Partial Dependencies."
+                    "Reasoning": "Removed partial functional dependencies"
                 }},
                 {{
-                    "Stage": "3NF", 
-                    "TableName": "Final_Table_Name", 
-                    "Columns": "Columns with no transitive dependency", 
+                    "NF_Stage": "3NF", 
+                    "Target_Table": "Final Table Name", 
+                    "Columns_Included": "list columns", 
                     "Primary_Key": "PK",
-                    "Action": "Removed Transitive Dependencies."
+                    "Reasoning": "Removed transitive dependencies"
                 }}
             ]
-            Provide the complete decomposition. 3NF results should show the final production tables.
             """
-            
             normalization_results = call_ai(prompt)
             
             if normalization_results:
+                # Sonuçları SQL'e aktarılmak üzere session_state'e kaydediyoruz
                 st.session_state.norm_data = normalization_results
-                st.success("Normalization decomposition complete!")
+                st.success("✅ Normalization analysis complete and ready for SQL export!")
 
-    # --- AYRIŞTIRILMIŞ TABLOLARIN GÖSTERİMİ ---
+    # --- GÖRSELLEŞTİRME (User Interface) ---
     if 'norm_data' in st.session_state and st.session_state.norm_data:
         res = st.session_state.norm_data
         
-        # Sekmeler halinde NF aşamalarını göster
-        t1, t2, t3 = st.tabs(["🔴 1st Normal Form", "🟡 2nd Normal Form", "🟢 3rd Normal Form"])
+        # Sekmeler oluştur
+        tab1, tab2, tab3 = st.tabs(["🔴 1st Normal Form", "🟡 2nd Normal Form", "🟢 3rd Normal Form"])
         
-        stages = {"1NF": t1, "2NF": t2, "3NF": t3}
+        stages = {"1NF": tab1, "2NF": tab2, "3NF": tab3}
         
         for stage_key, tab in stages.items():
             with tab:
-                st.markdown(f"### {stage_key} Analysis")
-                stage_tables = [t for t in res if t.get("Stage") == stage_key]
+                st.markdown(f"### {stage_key} Decomposition")
+                # İlgili NF aşamasına ait verileri filtrele
+                stage_tables = [t for t in res if t.get("NF_Stage") == stage_key]
                 
                 if stage_tables:
                     for table in stage_tables:
-                        with st.expander(f"📋 Table: {table.get('TableName')}", expanded=True):
-                            col_a, col_b = st.columns([2, 1])
-                            with col_a:
-                                st.write(f"**Columns:** {table.get('Columns')}")
-                                st.caption(f"*Action:* {table.get('Action')}")
-                            with col_b:
+                        with st.expander(f"📋 Table: {table.get('Target_Table')}", expanded=True):
+                            c1, c2 = st.columns([2, 1])
+                            with c1:
+                                st.write(f"**Columns:** `{table.get('Columns_Included')}`")
+                                st.info(f"**Logic:** {table.get('Reasoning')}")
+                            with c2:
                                 st.markdown(f"🔑 **PK:** `{table.get('Primary_Key')}`")
                 else:
-                    st.warning(f"No decomposition data produced for {stage_key}.")
+                    st.warning(f"{stage_key} için ayrıştırma verisi üretilemedi.")
+        
+        st.divider()
+        st.caption("⚠️ **Not:** Bu adımlar Stage 6'da `_normalization_log` tablosu olarak SQL'e eklenecektir.")
+    else:
+        st.info("Lütfen normalizasyon analizini başlatmak için yukarıdaki butona tıklayın.")
 
 # STAGE 5: ER DIAGRAM
 elif st.session_state.active_stage == 5:
@@ -303,43 +353,51 @@ elif st.session_state.active_stage == 5:
                 
             st.success("✅ Diagram successfully optimized.")
 
-# STAGE 6: SQL SCRIPT (Tam Senkronizasyon ve Hata Önleyici)
+# STAGE 6: SQL SCRIPT (Double Documentation Mode: Business & Missing Rules)
 elif st.session_state.active_stage == 6:
-    st.subheader("⌨️ Stage 6: SQL Code Generation (PHPMyAdmin Optimized)")
+    st.subheader("⌨️ Stage 6: SQL Code Generation (Full Documentation Mode)")
     
-    if st.button("✨ Generate Full SQL and Trigger Script with ChatGPT"):
-        with st.spinner("Synchronizing table structures and rules..."):
-            # Stage 1 ve Stage 3'ten gelen güncel kuralları ve tablo tanımlarını alıyoruz
-            main_rules = str(st.session_state.get('rules_data', []))
-            table_definitions = str(st.session_state.get('table_defs', []))
+    if st.button("✨ Generate Dual Rule Tables & SQL Script"):
+        with st.spinner("Analyzing rules and generating dual documentation tables..."):
+            # 1. Verileri Hazırla
+            main_rules = str(st.session_state.get('rules_data', [])) # En güncel liste (merge edilmiş)
+            missing_only = str(st.session_state.get('missing_data', [])) # Sadece 'Audit' sonucu bulunanlar
             
             prompt = f"""
-            As a Senior Database Architect, generate a full MariaDB/MySQL script for the '{domain}' system.
+            As a Senior Database Architect, generate a full MySQL/MariaDB script for '{domain}'.
             Entities: {entities}.
-            Actual Table Structure: {table_definitions}.
+            
+            STRICT ACADEMIC DOCUMENTATION REQUIREMENTS:
+            1. TABLE 1 (`_business_rules`): Use 'CREATE TABLE IF NOT EXISTS'. Insert ALL current merged rules from {main_rules}.
+               Columns: id (PK), rule_id, rule_description, logic_type.
 
-            STRICT REQUIREMENTS TO PREVENT ERROR 1054:
-            1. DOCUMENTATION TABLE: Create a table named `_business_rules` with EXACT columns: 
-               `id` (INT PK AUTO_INCREMENT), `rule_id` (VARCHAR(10)), `rule_statement` (TEXT), `logic_type` (VARCHAR(50)), `created_at` (TIMESTAMP).
-               - USE 'CREATE TABLE IF NOT EXISTS'.
-               - Convert ALL items in this list to INSERT statements: {main_rules}.
-            2. NO FAKE COLUMNS: Check {table_definitions}. If a trigger checks a column (like 'total' or 'start_time'), it MUST exist in the table definition. If it doesn't exist, use the closest actual column name or skip the logic.
-            3. TRIGGERS: Wrap EACH trigger with 'DELIMITER //' and 'DELIMITER ;'. Use local 'DECLARE' for variables.
-            4. FORMAT: Return ONLY the raw SQL code block. No explanations.
+            2. TABLE 2 (`_missing_rules_report`): Create a SEPARATE table to show the gaps you identified.
+               Columns: id (PK), related_br, finding, severity, proposed_fix.
+               Insert ONLY the findings from this audit list: {missing_only}.
+               - This table serves as an Audit Log for the professor to see what was improved.
+
+            3. DATABASE LOGIC:
+               - Use 'CREATE TABLE IF NOT EXISTS' for all business entities (Products, Orders, etc.).
+               - Write 'BEFORE INSERT' triggers for the rules. Use 'DECLARE' for variables to avoid MariaDB errors.
+               - Wrap triggers with 'DELIMITER //' and 'DELIMITER ;'.
+
+            4. FORMAT: Return ONLY raw SQL code. No explanations.
             """
             
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             raw_content = response.choices[0].message.content
             
+            # SQL temizliği
             sql_match = re.search(r"```sql\n(.*?)\n```", raw_content, re.DOTALL)
             clean_sql = sql_match.group(1) if sql_match else raw_content.replace("```sql", "").replace("```", "")
             
             st.session_state.full_sql = clean_sql.strip()
-            st.success("✅ SQL Ready! Column names synchronized with table definitions.")
+            st.success("✅ Dual Documentation Tables generated! Check Stage 7 to Deploy.")
 
     if 'full_sql' in st.session_state:
+        st.info("💡 **Academic Note:** PHPMyAdmin will now show two documentation tables: one for the final rules and one for the audit findings.")
         st.code(st.session_state.full_sql, language="sql")
-        st.download_button("📄 Download SQL File", st.session_state.full_sql, file_name="schema.sql")
+        st.download_button("📄 Download SQL with Audit Logs", st.session_state.full_sql, file_name="full_audit_db.sql")
 
 # STAGE 7: DEPLOY (Zeki SQL Yürütücü)
 elif st.session_state.active_stage == 7:
