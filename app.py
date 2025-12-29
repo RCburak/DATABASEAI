@@ -248,14 +248,13 @@ elif st.session_state.active_stage == 4:
     st.subheader("⚡ Stage 4: Database Normalization (Academic Decomposition)")
     
     st.info("""
-    **Normalizasyon Raporlama Mantığı:**
-    Bu aşamada yapılan analizler, Stage 6'da SQL olarak üretilecek ve PHPMyAdmin'de `_normalization_log` tablosuna kaydedilecektir. 
-    Bu sayede hocanız veritabanını açtığında normalizasyon adımlarınızı görebilecek.
+    **Normalization Reporting Logic:**
+    The analysis performed here will be generated as SQL in Stage 6 and saved to the `_normalization_log` table in PHPMyAdmin. 
+    This allows your professor to see your normalization steps when they open the database.
     """)
 
     if st.button("✨ Perform Academic Normalization & Log Analysis", type="primary"):
         with st.spinner("Decomposing tables and creating audit logs..."):
-            # Mevcut tablo tanımlarını ve kuralları referans alarak analiz yaptırıyoruz
             current_tables = str(st.session_state.get('table_defs', []))
             
             prompt = f"""
@@ -297,21 +296,16 @@ elif st.session_state.active_stage == 4:
                 st.session_state.norm_data = normalization_results
                 st.success("✅ Normalization analysis complete and ready for SQL export!")
 
-    # --- GÖRSELLEŞTİRME (User Interface) ---
+    # --- UI GÖRSELLEŞTİRME ---
     if 'norm_data' in st.session_state and st.session_state.norm_data:
         res = st.session_state.norm_data
-        
-        # Sekmeler oluştur
         tab1, tab2, tab3 = st.tabs(["🔴 1st Normal Form", "🟡 2nd Normal Form", "🟢 3rd Normal Form"])
-        
         stages = {"1NF": tab1, "2NF": tab2, "3NF": tab3}
         
         for stage_key, tab in stages.items():
             with tab:
                 st.markdown(f"### {stage_key} Decomposition")
-                # İlgili NF aşamasına ait verileri filtrele
                 stage_tables = [t for t in res if t.get("NF_Stage") == stage_key]
-                
                 if stage_tables:
                     for table in stage_tables:
                         with st.expander(f"📋 Table: {table.get('Target_Table')}", expanded=True):
@@ -321,140 +315,120 @@ elif st.session_state.active_stage == 4:
                                 st.info(f"**Logic:** {table.get('Reasoning')}")
                             with c2:
                                 st.markdown(f"🔑 **PK:** `{table.get('Primary_Key')}`")
-                else:
-                    st.warning(f"{stage_key} için ayrıştırma verisi üretilemedi.")
-        
         st.divider()
-        st.caption("⚠️ **Not:** Bu adımlar Stage 6'da `_normalization_log` tablosu olarak SQL'e eklenecektir.")
-    else:
-        st.info("Lütfen normalizasyon analizini başlatmak için yukarıdaki butona tıklayın.")
+        st.caption("⚠️ **Note:** These steps will be added to SQL as the `_normalization_log` table in Stage 6.")
 
-# STAGE 5: ER DIAGRAM
+# STAGE 5: ER DIAGRAM (PHPMyAdmin Kayıt Hazırlığı)
 elif st.session_state.active_stage == 5:
     st.subheader("🖼️ Stage 5: ER Diagram (Crow’s Foot Notation)")
     
     if st.button("✨ Create ER Diagram", type="primary"):
-        with st.spinner("Visualizing schema..."):
+        with st.spinner("Visualizing schema and preparing database export..."):
             prompt = f"Generate a Mermaid.js ER diagram using Crow's Foot for: {domain}. Entities: {entities}. Return ONLY raw mermaid code."
             
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             mermaid_code = response.choices[0].message.content.replace("```mermaid", "").replace("```", "").strip()
             
+            # Veriyi sonraki aşamada SQL'e gömmek için sakla
+            st.session_state.mermaid_code = mermaid_code
+            
             import base64
             encoded_string = base64.b64encode(mermaid_code.encode('utf-8')).decode('utf-8')
-            image_url = f"https://mermaid.ink/img/{encoded_string}"
+            st.session_state.er_image_url = f"https://mermaid.ink/img/{encoded_string}"
             
-            # --- KÜÇÜLTME MANTIĞI ---
+            # UI Görselleştirme
             col_left, col_mid, col_right = st.columns([1, 1.5, 1])
-            
             with col_mid:
-                st.markdown("🔍 **Preview (Scaled View)**")
-                st.image(image_url, use_container_width=True)
+                st.markdown("🔍 **Preview**")
+                st.image(st.session_state.er_image_url, use_container_width=True)
                 
-            st.success("✅ Diagram successfully optimized.")
+            st.success("✅ ER Diagram generated and ready for PHPMyAdmin export!")
 
-# STAGE 6: SQL SCRIPT (Double Documentation Mode: Business & Missing Rules)
+# STAGE 6: SQL SCRIPT (Safe Academic Mode - Tüm Tablolar Entegre)
 elif st.session_state.active_stage == 6:
-    st.subheader("⌨️ Stage 6: SQL Code Generation (Full Documentation Mode)")
+    st.subheader("⌨️ Stage 6: SQL Code Generation (Triple Documentation + Business Tables)")
     
-    if st.button("✨ Generate Dual Rule Tables & SQL Script"):
-        with st.spinner("Analyzing rules and generating dual documentation tables..."):
-            # 1. Verileri Hazırla
-            main_rules = str(st.session_state.get('rules_data', [])) # En güncel liste (merge edilmiş)
-            missing_only = str(st.session_state.get('missing_data', [])) # Sadece 'Audit' sonucu bulunanlar
-            
+    if st.button("✨ Generate Full SQL with Clean Logs"):
+        with st.spinner("Cleaning strings and generating full database schema..."):
+            # Önemli session verilerini topluyoruz
+            main_rules = str(st.session_state.get('rules_data', []))
+            audit_logs = str(st.session_state.get('missing_data', []))
+            norm_history = str(st.session_state.get('norm_data', []))
+            table_defs = str(st.session_state.get('table_defs', []))
+            er_url = st.session_state.get('er_image_url', 'No link')
+
             prompt = f"""
-            As a Senior Database Architect, generate a full MySQL/MariaDB script for '{domain}'.
-            Entities: {entities}.
+            As a Senior Database Architect, generate a COMPLETE MariaDB/MySQL script for '{domain}'.
             
-            STRICT ACADEMIC DOCUMENTATION REQUIREMENTS:
-            1. TABLE 1 (`_business_rules`): Use 'CREATE TABLE IF NOT EXISTS'. Insert ALL current merged rules from {main_rules}.
-               Columns: id (PK), rule_id, rule_description, logic_type.
+            STRICT SECURITY & SYNTAX RULES:
+            1. ESCAPING: Replace all single quotes (') with double single quotes ('') in all text values to prevent Error 1064.
+            2. BUSINESS TABLES: Create ALL tables (Doctors, Patients, etc.) from: {table_defs}. Use 'CREATE TABLE IF NOT EXISTS'.
+            3. NORMALIZATION LOG: Create `_normalization_log` (id PK, nf_stage, target_table, reasoning). 
+               - [CRITICAL] Insert ALL steps from: {norm_history}. Ensure reasoning text is properly escaped.
+            4. BUSINESS RULES: Create `_business_rules` (id PK, rule_id, rule_statement, logic_type). Insert ALL from: {main_rules}.
+            5. MISSING RULES: Create `_missing_rules_report` (id PK, related_br, finding, proposed_fix). Insert from: {audit_logs}.
+            6. ER REPOSITORY: Create `_er_diagram_link` (id PK, image_url TEXT). Insert "{er_url}".
+            7. TRIGGERS: Write triggers for all rules. Use local 'DECLARE' for variables and wrap with DELIMITER //.
 
-            2. TABLE 2 (`_missing_rules_report`): Create a SEPARATE table to show the gaps you identified.
-               Columns: id (PK), related_br, finding, severity, proposed_fix.
-               Insert ONLY the findings from this audit list: {missing_only}.
-               - This table serves as an Audit Log for the professor to see what was improved.
-
-            3. DATABASE LOGIC:
-               - Use 'CREATE TABLE IF NOT EXISTS' for all business entities (Products, Orders, etc.).
-               - Write 'BEFORE INSERT' triggers for the rules. Use 'DECLARE' for variables to avoid MariaDB errors.
-               - Wrap triggers with 'DELIMITER //' and 'DELIMITER ;'.
-
-            4. FORMAT: Return ONLY raw SQL code. No explanations.
+            Return ONLY raw SQL. No conversational text.
             """
             
             response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
-            raw_content = response.choices[0].message.content
-            
-            # SQL temizliği
-            sql_match = re.search(r"```sql\n(.*?)\n```", raw_content, re.DOTALL)
-            clean_sql = sql_match.group(1) if sql_match else raw_content.replace("```sql", "").replace("```", "")
-            
-            st.session_state.full_sql = clean_sql.strip()
-            st.success("✅ Dual Documentation Tables generated! Check Stage 7 to Deploy.")
+            raw_sql = response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
+            st.session_state.full_sql = raw_sql
+            st.success("✅ Full SQL with Escaped Strings Generated!")
 
     if 'full_sql' in st.session_state:
-        st.info("💡 **Academic Note:** PHPMyAdmin will now show two documentation tables: one for the final rules and one for the audit findings.")
         st.code(st.session_state.full_sql, language="sql")
-        st.download_button("📄 Download SQL with Audit Logs", st.session_state.full_sql, file_name="full_audit_db.sql")
 
 # STAGE 7: DEPLOY (Zeki SQL Yürütücü)
 elif st.session_state.active_stage == 7:
-    st.subheader("🚀 Final Step: Deployment to PHPMyAdmin")
+    st.subheader("🚀 Stage 7: Deployment to PHPMyAdmin")
     safe_db_name = domain.lower().replace(" ", "_") + "_db"
     
     if st.button("🚀 EXECUTE ON MySQL"):
-        if 'full_sql' not in st.session_state or not st.session_state.full_sql:
-            st.error("You must generate code in the 'SQL Script' stage first!")
+        if 'full_sql' not in st.session_state:
+            st.error("Generate SQL first!")
         else:
             try:
                 conn = mysql.connector.connect(host="localhost", user="root", password="")
                 cursor = conn.cursor()
                 cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{safe_db_name}`")
                 cursor.execute(f"USE `{safe_db_name}`")
+                
+                # İlişki hatalarını önlemek için kontrolleri kapat
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
                 
-                import re
                 raw_sql = st.session_state.full_sql
-                sql_commands = []
                 
-                # Delimiter bloklarını (Triggerlar) parçalamadan ayıkla
+                # Akıllı Trigger ve Normal Komut Ayrımı
                 trigger_pattern = r"DELIMITER //(.*?)\/\/ DELIMITER ;"
                 triggers = re.findall(trigger_pattern, raw_sql, re.DOTALL)
-                non_trigger_sql = re.sub(trigger_pattern, "", raw_sql, flags=re.DOTALL)
+                non_triggers = re.sub(trigger_pattern, "", raw_sql, flags=re.DOTALL)
                 
-                # Normal komutları (CREATE, INSERT) ; ile böl
-                for cmd in non_trigger_sql.split(';'):
-                    if cmd.strip(): sql_commands.append(cmd.strip())
-                
-                # Tetikleyicileri tek parça olarak ekle
-                for trg in triggers:
-                    if trg.strip(): sql_commands.append(trg.strip())
-
-                success_count = 0
-                error_logs = []
-                for command in sql_commands:
-                    upper_cmd = command.upper().strip()
-                    if any(upper_cmd.startswith(x) for x in ["CREATE", "INSERT", "ALTER", "DROP", "SET"]):
+                # 1. Normal Tablolar ve Veriler (Normalizasyon kayıtları burada işlenir)
+                for cmd in non_triggers.split(';'):
+                    clean_cmd = cmd.strip()
+                    if clean_cmd and not any(x in clean_cmd.upper() for x in ["CREATE DATABASE", "USE"]):
                         try:
-                            cursor.execute(command)
-                            success_count += 1
+                            cursor.execute(clean_cmd)
                         except Exception as e:
-                            error_logs.append(f"Error: {str(e)}")
+                            st.warning(f"Command Skipped: {str(e)[:100]}...")
+
+                # 2. Tetikleyiciler (Triggers)
+                for trg in triggers:
+                    if trg.strip():
+                        cursor.execute(trg.strip())
                 
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
                 conn.commit()
-                if success_count > 0:
-                    st.success(f"✅ {success_count} commands successfully deployed!")
-                    st.balloons()
-                if error_logs:
-                    with st.expander("Some commands could not be processed"):
-                        for log in error_logs: st.warning(log)
+                st.success(f"✅ DEPLOYMENT SUCCESSFUL: Business Tables and Normalization Log are now in `{safe_db_name}`!")
+                st.balloons()
+                
                 cursor.close()
                 conn.close()
             except Exception as e:
-                st.error(f"MySQL Connection Error: {e}")
+                st.error(f"Critical Execution Error: {e}")
 
 if st.session_state.active_stage == 0:
     st.info("To start the process, please complete the definitions in the left menu and click Stage 1.")
